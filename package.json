@@ -1,0 +1,85 @@
+{
+  "name": "markdown-wysiwyg",
+  "displayName": "Markdown WYSIWYG",
+  "description": "Edit markdown files in a Notion-style WYSIWYG editor, with easy switching back to the regular text editor.",
+  "version": "0.0.1",
+  "publisher": "nicholas",
+  "private": true,
+  "engines": {
+    "vscode": "^1.85.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "activationEvents": [],
+  "main": "./dist/extension.js",
+  "contributes": {
+    "customEditors": [
+      {
+        "viewType": "markdownWysiwyg.editor",
+        "displayName": "Markdown WYSIWYG",
+        "selector": [
+          {
+            "filenamePattern": "*.md"
+          },
+          {
+            "filenamePattern": "*.markdown"
+          }
+        ],
+        "priority": "option"
+      }
+    ],
+    "commands": [
+      {
+        "command": "markdownWysiwyg.openWysiwyg",
+        "title": "Markdown: Open in WYSIWYG Mode",
+        "icon": "$(preview)"
+      },
+      {
+        "command": "markdownWysiwyg.openSource",
+        "title": "Markdown: Open in Code Mode",
+        "icon": "$(code)"
+      }
+    ],
+    "menus": {
+      "editor/title": [
+        {
+          "command": "markdownWysiwyg.openWysiwyg",
+          "when": "resourceLangId == markdown && activeCustomEditorId != markdownWysiwyg.editor",
+          "group": "navigation"
+        },
+        {
+          "command": "markdownWysiwyg.openSource",
+          "when": "activeCustomEditorId == markdownWysiwyg.editor",
+          "group": "navigation"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "markdownWysiwyg.openWysiwyg",
+          "when": "resourceLangId == markdown"
+        },
+        {
+          "command": "markdownWysiwyg.openSource",
+          "when": "activeCustomEditorId == markdownWysiwyg.editor"
+        }
+      ]
+    }
+  },
+  "scripts": {
+    "build": "node esbuild.mjs",
+    "watch": "node esbuild.mjs --watch",
+    "package": "vsce package",
+    "vscode:prepublish": "node esbuild.mjs --production"
+  },
+  "devDependencies": {
+    "@types/node": "^20.0.0",
+    "@types/vscode": "^1.85.0",
+    "esbuild": "^0.24.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@milkdown/crepe": "^7.5.0",
+    "@milkdown/kit": "^7.5.0"
+  }
+}

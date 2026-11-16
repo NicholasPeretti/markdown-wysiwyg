@@ -1,0 +1,134 @@
+html,
+body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--vscode-editor-background);
+}
+
+#editor {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 32px 120px;
+  min-height: 100%;
+  box-sizing: border-box;
+}
+
+/* Blend the Milkdown frame theme into the current VS Code theme. */
+.milkdown {
+  --crepe-color-background: var(--vscode-editor-background);
+  --crepe-color-on-background: var(--vscode-editor-foreground);
+  --crepe-color-surface: var(--vscode-editorWidget-background);
+  --crepe-color-surface-low: var(--vscode-editorWidget-background);
+  --crepe-color-on-surface: var(--vscode-editor-foreground);
+  --crepe-color-on-surface-variant: var(--vscode-descriptionForeground);
+  --crepe-color-outline: var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  --crepe-color-primary: var(--vscode-textLink-foreground);
+  --crepe-color-secondary: var(--vscode-editor-selectionBackground);
+  --crepe-color-on-secondary: var(--vscode-editor-foreground);
+  --crepe-color-inverse: var(--vscode-editor-foreground);
+  --crepe-color-on-inverse: var(--vscode-editor-background);
+  --crepe-color-inline-code: var(--vscode-textPreformat-foreground);
+  --crepe-color-error: var(--vscode-errorForeground);
+  --crepe-color-hover: var(--vscode-list-hoverBackground);
+  --crepe-color-selected: var(--vscode-list-activeSelectionBackground);
+  --crepe-color-inline-area: var(--vscode-textCodeBlock-background);
+
+  --crepe-font-default: -apple-system, BlinkMacSystemFont, "Segoe UI",
+    "Noto Sans", Helvetica, Arial, sans-serif;
+  --crepe-font-title: var(--crepe-font-default);
+
+  background: var(--vscode-editor-background);
+}
+
+/* ----- Reading comfort ----- */
+
+.milkdown .ProseMirror {
+  padding: 0;
+  font-size: 16px;
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+.milkdown .ProseMirror p {
+  margin: 0 0 1.1em;
+}
+
+/* Generous breathing room above headings, tighter below. */
+.milkdown .ProseMirror h1,
+.milkdown .ProseMirror h2,
+.milkdown .ProseMirror h3,
+.milkdown .ProseMirror h4,
+.milkdown .ProseMirror h5,
+.milkdown .ProseMirror h6 {
+  line-height: 1.3;
+  margin-top: 1.8em;
+  margin-bottom: 0.6em;
+  font-weight: 650;
+  letter-spacing: -0.01em;
+}
+
+.milkdown .ProseMirror h1 { font-size: 2em; }
+.milkdown .ProseMirror h2 { font-size: 1.5em; }
+.milkdown .ProseMirror h3 { font-size: 1.25em; }
+.milkdown .ProseMirror h4 { font-size: 1.05em; }
+
+.milkdown .ProseMirror h1:first-child {
+  margin-top: 0;
+}
+
+/* Lists: comfortable spacing between items. */
+.milkdown .ProseMirror li {
+  margin: 0.3em 0;
+}
+
+/* Blockquotes: softer, more editorial. */
+.milkdown .ProseMirror blockquote {
+  margin: 1.4em 0;
+  padding: 0.1em 1.25em;
+  border-left: 3px solid var(--crepe-color-primary);
+  color: var(--crepe-color-on-surface-variant);
+  background: var(--crepe-color-inline-area);
+  border-radius: 0 6px 6px 0;
+}
+
+/* Code blocks: rounded, slightly smaller type, roomy padding. */
+.milkdown milkdown-code-block {
+  margin: 1.4em 0;
+  border-radius: 8px;
+}
+
+.milkdown .ProseMirror .cm-editor {
+  font-size: 13.5px;
+  line-height: 1.6;
+}
+
+/* Images: rounded and centered. */
+.milkdown .ProseMirror img {
+  max-width: 100%;
+  border-radius: 8px;
+}
+
+/* Horizontal rules: subtle. */
+.milkdown .ProseMirror hr {
+  border: none;
+  border-top: 1px solid var(--crepe-color-outline);
+  margin: 2.5em 0;
+}
+
+/* Links: underline on hover only. */
+.milkdown .ProseMirror a {
+  color: var(--crepe-color-primary);
+  text-decoration: none;
+}
+
+.milkdown .ProseMirror a:hover {
+  text-decoration: underline;
+}
+
+/* Tables: a little air in the cells. */
+.milkdown .ProseMirror th,
+.milkdown .ProseMirror td {
+  padding: 8px 14px;
+}
