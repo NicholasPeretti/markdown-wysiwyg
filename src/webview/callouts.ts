@@ -26,7 +26,7 @@ import {
 import type { Crepe, CrepeFeature } from '@milkdown/crepe';
 
 type CrepeConfig = NonNullable<ConstructorParameters<typeof Crepe>[0]>;
-type SlashMenuBuilder = Parameters<
+export type SlashMenuBuilder = Parameters<
   NonNullable<
     NonNullable<NonNullable<CrepeConfig['featureConfigs']>[CrepeFeature.BlockEdit]>['buildMenu']
   >

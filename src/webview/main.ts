@@ -4,6 +4,7 @@ import { Selection } from '@milkdown/kit/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
 import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
+import { applySlashAliases } from './slash_aliases';
 import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
@@ -71,7 +72,10 @@ async function createEditor(initial: string): Promise<void> {
     defaultValue: body,
     featureConfigs: {
       [Crepe.Feature.BlockEdit]: {
-        buildMenu: addCalloutSlashItems,
+        buildMenu: (builder) => {
+          addCalloutSlashItems(builder);
+          applySlashAliases(builder, crepe!.editor.ctx);
+        },
       },
     },
   });
