@@ -14,11 +14,12 @@ export function activate(context: vscode.ExtensionContext) {
     ),
 
     vscode.commands.registerCommand('markdownWysiwyg.openWysiwyg', (uri?: vscode.Uri) => {
-      const target = uri ?? vscode.window.activeTextEditor?.document.uri;
+      const target = uri ?? activeTabUri() ?? vscode.window.activeTextEditor?.document.uri;
       if (!target) {
         return;
       }
-      vscode.commands.executeCommand('vscode.openWith', target, VIEW_TYPE);
+      codeModeUris.delete(target.toString());
+      reopenWith(target, VIEW_TYPE);
     }),
 
     vscode.commands.registerCommand('markdownWysiwyg.openSource', (uri?: vscode.Uri) => {
@@ -26,13 +27,71 @@ export function activate(context: vscode.ExtensionContext) {
       if (!target) {
         return;
       }
-      vscode.commands.executeCommand('vscode.openWith', target, 'default');
+      codeModeUris.add(target.toString());
+      reopenWith(target, 'default');
+    }),
+
+    vscode.commands.registerCommand('markdownWysiwyg.toggleToc', () => {
+      activePanel?.webview.postMessage({ type: 'toggleToc' });
+    }),
+
+    // VS Code's editor history can reopen markdown as plain text (e.g. after
+    // viewing a diff). Redirect such tabs back to WYSIWYG, unless the user
+    // explicitly switched that file to code mode.
+    vscode.window.tabGroups.onDidChangeTabs((e) => {
+      for (const tab of e.opened) {
+        const input = tab.input;
+        if (
+          input instanceof vscode.TabInputText &&
+          input.uri.scheme === 'file' &&
+          /\.(md|markdown)$/i.test(input.uri.path) &&
+          !codeModeUris.has(input.uri.toString())
+        ) {
+          reopenWith(input.uri, VIEW_TYPE, tab.group);
+        }
+      }
     })
   );
 }
 
+/** Files the user explicitly switched to code mode this session. */
+const codeModeUris = new Set<string>();
+
 /** Tracks the document shown in the focused WYSIWYG editor, for the toggle command. */
 let activeCustomEditorUri: vscode.Uri | undefined;
+/** The most recently focused WYSIWYG webview panel. */
+let activePanel: vscode.WebviewPanel | undefined;
+
+/** Resource of the active tab, regardless of editor type. For diff views, the modified side. */
+function activeTabUri(): vscode.Uri | undefined {
+  const input = vscode.window.tabGroups.activeTabGroup.activeTab?.input;
+  if (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) {
+    return input.uri;
+  }
+  if (input instanceof vscode.TabInputTextDiff && input.modified.scheme === 'file') {
+    return input.modified;
+  }
+  return undefined;
+}
+
+/** Reopens `uri` with the given editor in place, closing the current tab for it. */
+async function reopenWith(
+  uri: vscode.Uri,
+  viewType: string,
+  group: vscode.TabGroup = vscode.window.tabGroups.activeTabGroup
+): Promise<void> {
+  const oldTabs = group.tabs.filter((tab) => {
+    const input = tab.input;
+    return (
+      (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) &&
+      input.uri.toString() === uri.toString()
+    );
+  });
+  await vscode.commands.executeCommand('vscode.openWith', uri, viewType, group.viewColumn);
+  if (oldTabs.length > 0) {
+    await vscode.window.tabGroups.close(oldTabs, true);
+  }
+}
 
 class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
   constructor(private readonly context: vscode.ExtensionContext) {}
@@ -43,6 +102,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     _token: vscode.CancellationToken
   ): Promise<void> {
     activeCustomEditorUri = document.uri;
+    activePanel = webviewPanel;
 
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -55,7 +115,11 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     let applyingWebviewEdit = false;
 
     const postContent = () => {
-      webviewPanel.webview.postMessage({ type: 'update', text: document.getText() });
+      webviewPanel.webview.postMessage({
+        type: 'update',
+        text: document.getText(),
+        tocVisible: this.context.globalState.get('tocVisible', true),
+      });
     };
 
     const changeSub = vscode.workspace.onDidChangeTextDocument((e) => {
@@ -71,6 +135,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     const viewStateSub = webviewPanel.onDidChangeViewState(() => {
       if (webviewPanel.active) {
         activeCustomEditorUri = document.uri;
+        activePanel = webviewPanel;
       }
     });
 
@@ -78,6 +143,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       switch (message.type) {
         case 'ready':
           postContent();
+          break;
+        case 'tocVisible':
+          this.context.globalState.update('tocVisible', message.value);
           break;
         case 'edit': {
           const incoming: string = message.text;
@@ -104,6 +172,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     webviewPanel.onDidDispose(() => {
       changeSub.dispose();
       viewStateSub.dispose();
+      if (activePanel === webviewPanel) {
+        activePanel = undefined;
+      }
       if (activeCustomEditorUri?.toString() === document.uri.toString()) {
         activeCustomEditorUri = undefined;
       }

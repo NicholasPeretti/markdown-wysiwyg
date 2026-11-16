@@ -3,7 +3,7 @@
   "displayName": "Markdown WYSIWYG",
   "description": "Edit markdown files in a Notion-style WYSIWYG editor, with easy switching back to the regular text editor.",
   "version": "0.0.1",
-  "publisher": "nicholas",
+  "publisher": "NicholasPeretti",
   "private": true,
   "engines": {
     "vscode": "^1.85.0"
@@ -26,19 +26,37 @@
             "filenamePattern": "*.markdown"
           }
         ],
-        "priority": "option"
+        "priority": "default"
       }
     ],
     "commands": [
       {
         "command": "markdownWysiwyg.openWysiwyg",
         "title": "Markdown: Open in WYSIWYG Mode",
-        "icon": "$(preview)"
+        "icon": "$(book)"
       },
       {
         "command": "markdownWysiwyg.openSource",
         "title": "Markdown: Open in Code Mode",
         "icon": "$(code)"
+      },
+      {
+        "command": "markdownWysiwyg.toggleToc",
+        "title": "Markdown: Toggle Table of Contents"
+      }
+    ],
+    "keybindings": [
+      {
+        "command": "markdownWysiwyg.openWysiwyg",
+        "key": "ctrl+alt+m",
+        "mac": "alt+cmd+m",
+        "when": "activeCustomEditorId != markdownWysiwyg.editor && (resourceLangId == markdown || resourceExtname == .md || resourceExtname == .markdown)"
+      },
+      {
+        "command": "markdownWysiwyg.openSource",
+        "key": "ctrl+alt+m",
+        "mac": "alt+cmd+m",
+        "when": "activeCustomEditorId == markdownWysiwyg.editor"
       }
     ],
     "menus": {
@@ -62,6 +80,10 @@
         {
           "command": "markdownWysiwyg.openSource",
           "when": "activeCustomEditorId == markdownWysiwyg.editor"
+        },
+        {
+          "command": "markdownWysiwyg.toggleToc",
+          "when": "activeCustomEditorId == markdownWysiwyg.editor"
         }
       ]
     }
@@ -80,6 +102,13 @@
   },
   "dependencies": {
     "@milkdown/crepe": "^7.5.0",
-    "@milkdown/kit": "^7.5.0"
+    "@milkdown/kit": "^7.5.0",
+    "gemoji": "^8.1.0",
+    "yaml": "^2.9.1"
+  },
+  "author": "Nicholas Peretti",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/NicholasPeretti/markdown-wysiwyg.git"
   }
 }

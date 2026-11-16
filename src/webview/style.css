@@ -9,7 +9,7 @@ body {
 #editor {
   max-width: 980px;
   margin: 0 auto;
-  padding: 32px 32px 120px;
+  padding: 8px 32px 120px;
   min-height: 100%;
   box-sizing: border-box;
 }
@@ -45,6 +45,7 @@ body {
 
 .milkdown .ProseMirror {
   padding: 0;
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-editor-foreground));
   font-size: 16px;
   line-height: 1.75;
   -webkit-font-smoothing: antialiased;
@@ -131,4 +132,362 @@ body {
 .milkdown .ProseMirror th,
 .milkdown .ProseMirror td {
   padding: 8px 14px;
+}
+
+/* Emoji autocomplete popup. */
+.mdw-emoji-popup {
+  position: fixed;
+  z-index: 1000;
+  min-width: 220px;
+  max-width: 320px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 13px;
+  color: var(--vscode-editor-foreground);
+}
+
+.mdw-emoji-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdw-emoji-item.active,
+.mdw-emoji-item:hover {
+  background: var(--vscode-list-activeSelectionBackground);
+  color: var(--vscode-list-activeSelectionForeground, var(--vscode-editor-foreground));
+}
+
+.mdw-emoji-icon {
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+}
+
+#frontmatter-host input,
+#frontmatter-host textarea {
+  caret-color: var(--vscode-editorCursor-foreground, var(--vscode-editor-foreground));
+}
+
+/* Frontmatter panel. */
+#frontmatter-host {
+  max-width: 980px;
+  margin: 0 auto;
+  padding: 32px 32px 0;
+  box-sizing: border-box;
+}
+
+.mdw-fm-add {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  cursor: pointer;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.4;
+  transition: opacity 0.15s;
+}
+
+.mdw-fm-add:hover {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground);
+}
+
+.mdw-frontmatter {
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  border-radius: 8px;
+  background: var(--vscode-textCodeBlock-background);
+  overflow: hidden;
+}
+
+.mdw-fm-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 12px 2px;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mdw-fm-btn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  font-size: 11px;
+  padding: 2px 4px;
+  opacity: 0.6;
+}
+
+.mdw-fm-btn:hover {
+  opacity: 1;
+}
+
+.mdw-fm-remove:hover {
+  color: var(--vscode-errorForeground);
+}
+
+.mdw-fm-body {
+  padding: 2px 8px 8px;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 13px;
+  color: var(--vscode-editor-foreground);
+}
+
+.mdw-fm-rows {
+  display: flex;
+  flex-direction: column;
+}
+
+.mdw-fm-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+  padding: 1px 0;
+  border-radius: 5px;
+}
+
+.mdw-fm-row:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mdw-fm-icon {
+  width: 22px;
+  flex: none;
+  text-align: center;
+  font-size: 11px;
+  line-height: 26px;
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.8;
+}
+
+.mdw-fm-key {
+  flex: none;
+  width: 140px;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  line-height: 26px;
+  padding: 0 4px;
+}
+
+.mdw-fm-key:focus,
+.mdw-fm-text:focus {
+  background: var(--vscode-input-background);
+  border-radius: 4px;
+  color: var(--vscode-input-foreground);
+}
+
+.mdw-fm-value {
+  flex: 1;
+  min-width: 0;
+}
+
+.mdw-fm-text {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  line-height: 26px;
+  padding: 0 4px;
+}
+
+.mdw-fm-text::placeholder,
+.mdw-fm-key::placeholder {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.5;
+}
+
+.mdw-fm-check {
+  margin: 7px 4px;
+}
+
+.mdw-fm-complex {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  padding: 4px;
+  white-space: pre;
+  overflow-x: auto;
+  color: var(--vscode-descriptionForeground);
+}
+
+.mdw-fm-pills {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 4px;
+}
+
+.mdw-fm-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 10px;
+  padding: 1px 4px 1px 8px;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.mdw-fm-pill-x {
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: inherit;
+  font-size: 9px;
+  padding: 0 2px;
+  opacity: 0.6;
+}
+
+.mdw-fm-pill-x:hover {
+  opacity: 1;
+}
+
+.mdw-fm-pill-input {
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  font-size: 12px;
+  width: 60px;
+  padding: 2px;
+}
+
+.mdw-fm-add-prop {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 12px;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px;
+  opacity: 0.6;
+}
+
+.mdw-fm-add-prop:hover {
+  opacity: 1;
+  color: var(--vscode-textLink-foreground);
+}
+
+.mdw-fm-textarea {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  border: none;
+  outline: none;
+  resize: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  padding: 4px;
+  overflow: hidden;
+}
+
+/* Floating table of contents (Notion-style). */
+.mdw-toc {
+  position: fixed;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
+  z-index: 100;
+}
+
+.mdw-toc-marks {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 7px;
+  padding: 8px 4px;
+}
+
+.mdw-toc-mark {
+  height: 3px;
+  border-radius: 2px;
+  background: var(--vscode-descriptionForeground);
+  opacity: 0.35;
+  transition: opacity 0.15s, background 0.15s;
+}
+
+.mdw-toc-mark.active {
+  background: var(--vscode-textLink-foreground);
+  opacity: 0.9;
+}
+
+.mdw-toc-panel {
+  position: absolute;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%) translateX(8px);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.18s ease-out, transform 0.18s ease-out, visibility 0.18s;
+  width: 240px;
+  max-height: 70vh;
+  overflow-y: auto;
+  padding: 8px 6px;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 12.5px;
+}
+
+.mdw-toc-marks {
+  transition: opacity 0.15s ease-out;
+}
+
+.mdw-toc:hover .mdw-toc-marks {
+  opacity: 0;
+}
+
+.mdw-toc:hover .mdw-toc-panel {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+  transform: translateY(-50%) translateX(0);
+}
+
+.mdw-toc-item {
+  padding: 4px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+  color: var(--vscode-descriptionForeground);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.mdw-toc-item:hover {
+  background: var(--vscode-list-hoverBackground);
+  color: var(--vscode-editor-foreground);
+}
+
+.mdw-toc-item.active {
+  color: var(--vscode-textLink-foreground);
 }
