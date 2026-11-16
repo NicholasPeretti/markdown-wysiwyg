@@ -50,7 +50,7 @@ columns: file.name, title, status, file.modified
 Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Missing fields compare like Notion: `!=` is true, everything else is false.
 
 - **Cmd/Ctrl+click** a row to open the file.
-- The **⋯** menu in the table header has **Edit query**, **Copy as Markdown** (static table of the current result) and **Copy query**.
+- The table header has a pencil toggle to edit the query and a **⋯** menu with **Copy as Markdown** (static table of the current result) and **Copy query**.
 - Results refresh automatically when files change; run **Markdown WYSIWYG: Rebuild Query Index** if they look stale.
 - Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
 

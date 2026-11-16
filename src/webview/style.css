@@ -711,9 +711,44 @@ body {
   font-size: 12px;
 }
 
-/* Crepe's own Copy/Edit buttons are replaced by the ⋯ menu for query blocks. */
-.milkdown .milkdown-code-block:has(.mdw-qt) .tools .tools-button-group {
+/* Crepe's toolbar (language picker, Copy, Edit) is replaced by the query
+   table header, which takes its place at the top of the block. */
+.milkdown .milkdown-code-block:has(.mdw-qt) .tools {
   display: none;
+}
+
+.milkdown .milkdown-code-block:has(.mdw-qt) {
+  padding-top: 12px;
+}
+
+/* In edit mode the result sits below the editor; keep the toggle reachable. */
+.milkdown .milkdown-code-block.mdw-qt-editing .preview-panel {
+  margin-top: 8px;
+}
+
+.mdw-qt-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.mdw-qt-header .mdw-qt-edit {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px 5px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.mdw-qt:hover .mdw-qt-edit,
+.mdw-qt-editing .mdw-qt-header .mdw-qt-edit {
+  opacity: 1;
+}
+
+.mdw-qt-editing .mdw-qt-header .mdw-qt-edit {
+  background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
+  color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
 }
 
 .mdw-qt-header-bare {
@@ -729,7 +764,6 @@ body {
 
 .mdw-qt-menu {
   position: relative;
-  margin-left: auto;
   display: inline-flex;
 }
 

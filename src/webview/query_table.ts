@@ -161,12 +161,17 @@ function blockId(text: string): string {
 // ---------------------------------------------------------------------------
 // Rendering
 
-const MENU_HTML = `<span class="mdw-qt-menu">
-  <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
-  <span class="mdw-qt-menu-list" role="menu">
-    <button data-act="edit" role="menuitem">Edit query</button>
-    <button data-act="copy" role="menuitem">Copy as Markdown</button>
-    <button data-act="copy-query" role="menuitem">Copy query</button>
+const EDIT_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>';
+
+const MENU_HTML = `<span class="mdw-qt-actions">
+  <button data-act="edit" class="mdw-qt-edit" title="Edit query" aria-pressed="false">${EDIT_ICON}</button>
+  <span class="mdw-qt-menu">
+    <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
+    <span class="mdw-qt-menu-list" role="menu">
+      <button data-act="copy" role="menuitem">Copy as Markdown</button>
+      <button data-act="copy-query" role="menuitem">Copy query</button>
+    </span>
   </span>
 </span>`;
 
@@ -322,16 +327,16 @@ function onClick(e: MouseEvent): void {
         const menu = target.closest<HTMLElement>('.mdw-qt-menu')!;
         const open = menu.classList.contains('open');
         closeMenus();
-        if (!open) {
-          const editing = !root.closest('.milkdown-code-block')?.querySelector('.codemirror-host.hidden');
-          menu.querySelector('[data-act=edit]')!.textContent = editing ? 'Show result' : 'Edit query';
-          menu.classList.add('open');
-        }
+        if (!open) menu.classList.add('open');
         break;
       }
-      case 'edit':
-        root.closest('.milkdown-code-block')?.querySelector<HTMLElement>('.preview-toggle-button')?.click();
+      case 'edit': {
+        const block = root.closest<HTMLElement>('.milkdown-code-block');
+        const editing = !!block?.querySelector('.codemirror-host.hidden');
+        block?.querySelector<HTMLElement>('.preview-toggle-button')?.click();
+        syncEditToggle(block, editing);
         break;
+      }
       case 'copy-query':
         void navigator.clipboard.writeText(state.text);
         break;
@@ -378,6 +383,15 @@ function onMouseMove(e: MouseEvent): void {
   const target = e.target as HTMLElement;
   const row = target.closest?.('tr[data-path]');
   document.body.classList.toggle('mdw-qt-mod-row', !!row && (e.metaKey || e.ctrlKey));
+}
+
+/** Reflects edit/result mode on the toggle (the block is re-rendered by Vue, so query the DOM). */
+function syncEditToggle(block: HTMLElement | null, editing: boolean): void {
+  block?.classList.toggle('mdw-qt-editing', editing);
+  block?.querySelectorAll<HTMLElement>('.mdw-qt-edit').forEach((b) => {
+    b.setAttribute('aria-pressed', String(editing));
+    b.title = editing ? 'Show result' : 'Edit query';
+  });
 }
 
 function closeMenus(): void {
