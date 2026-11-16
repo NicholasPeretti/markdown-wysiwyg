@@ -933,3 +933,17 @@ body {
   font-size: 12px;
   white-space: pre-wrap;
 }
+
+/* Task-list checkboxes: more contrast than Crepe's outline colour. */
+.milkdown .milkdown-list-item-block li .label-wrapper .unchecked svg {
+  fill: var(--vscode-checkbox-border, var(--vscode-editor-foreground));
+  opacity: 0.85;
+}
+
+.milkdown .milkdown-list-item-block li .label-wrapper .checked svg {
+  fill: var(--vscode-textLink-foreground, var(--crepe-color-primary));
+}
+
+.milkdown .milkdown-list-item-block li .label-wrapper .unchecked:hover svg {
+  opacity: 1;
+}
