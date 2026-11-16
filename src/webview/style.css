@@ -711,8 +711,73 @@ body {
   font-size: 12px;
 }
 
-.mdw-qt-header .mdw-qt-copy {
+/* Crepe's own Copy/Edit buttons are replaced by the ⋯ menu for query blocks. */
+.milkdown .milkdown-code-block:has(.mdw-qt) .tools .tools-button-group {
+  display: none;
+}
+
+.mdw-qt-header-bare {
+  position: absolute;
+  top: 0;
+  right: 0;
+  padding: 0;
+}
+
+.mdw-qt {
+  position: relative;
+}
+
+.mdw-qt-menu {
+  position: relative;
   margin-left: auto;
+  display: inline-flex;
+}
+
+.mdw-qt-menu-btn {
+  font-size: 16px;
+  line-height: 1;
+  letter-spacing: 1px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.mdw-qt:hover .mdw-qt-menu-btn,
+.mdw-qt-menu.open .mdw-qt-menu-btn {
+  opacity: 1;
+}
+
+.mdw-qt-menu-list {
+  display: none;
+  position: absolute;
+  right: 0;
+  top: 100%;
+  z-index: 10;
+  min-width: 160px;
+  padding: 4px;
+  flex-direction: column;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  text-align: left;
+}
+
+.mdw-qt-menu.open .mdw-qt-menu-list {
+  display: flex;
+}
+
+.mdw-qt-header .mdw-qt-menu-list button {
+  color: inherit;
+  padding: 5px 10px;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.mdw-qt-header .mdw-qt-menu-list button:hover {
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, inherit);
 }
 
 .mdw-qt-header button {

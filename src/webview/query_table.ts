@@ -80,7 +80,7 @@ export function renderQueryPreview(
   if (state.result || state.error) {
     apply(render(id, state));
   } else {
-    apply(renderShell(id, '<div class="mdw-qt-status">Querying…</div>'));
+    apply(renderShell(id, '<div class="mdw-qt-status">Querying…</div>', false));
   }
   run(id);
   return undefined;
@@ -161,11 +161,23 @@ function blockId(text: string): string {
 // ---------------------------------------------------------------------------
 // Rendering
 
-function renderShell(id: string, inner: string): HTMLElement {
+const MENU_HTML = `<span class="mdw-qt-menu">
+  <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
+  <span class="mdw-qt-menu-list" role="menu">
+    <button data-act="edit" role="menuitem">Edit query</button>
+    <button data-act="copy" role="menuitem">Copy as Markdown</button>
+    <button data-act="copy-query" role="menuitem">Copy query</button>
+  </span>
+</span>`;
+
+function renderShell(id: string, inner: string, withMenu = true): HTMLElement {
   const el = document.createElement('div');
   el.className = 'mdw-qt';
   el.dataset.qid = id;
   el.innerHTML = inner;
+  if (withMenu && !el.querySelector('.mdw-qt-header')) {
+    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-header mdw-qt-header-bare">${MENU_HTML}</div>`);
+  }
   return el;
 }
 
@@ -217,7 +229,7 @@ function render(id: string, state: BlockState): HTMLElement {
     `<div class="mdw-qt-header">
       <span class="mdw-qt-count">${count}</span>
       ${pager}
-      <button data-act="copy" class="mdw-qt-copy" title="Copy as Markdown table">Copy as Markdown</button>
+      ${MENU_HTML}
     </div>
     <div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>`
   );
@@ -292,7 +304,10 @@ function toMarkdown(result: Result, rows: Result['rows']): string {
 function onClick(e: MouseEvent): void {
   const target = e.target as HTMLElement;
   const root = target.closest<HTMLElement>('.mdw-qt');
-  if (!root) return;
+  if (!root) {
+    closeMenus();
+    return;
+  }
   const id = root.dataset.qid!;
   const state = blocks.get(id);
   if (!state) return;
@@ -301,7 +316,25 @@ function onClick(e: MouseEvent): void {
   if (action) {
     e.preventDefault();
     e.stopPropagation();
+    if (action !== 'menu') closeMenus();
     switch (action) {
+      case 'menu': {
+        const menu = target.closest<HTMLElement>('.mdw-qt-menu')!;
+        const open = menu.classList.contains('open');
+        closeMenus();
+        if (!open) {
+          const editing = !root.closest('.milkdown-code-block')?.querySelector('.codemirror-host.hidden');
+          menu.querySelector('[data-act=edit]')!.textContent = editing ? 'Show result' : 'Edit query';
+          menu.classList.add('open');
+        }
+        break;
+      }
+      case 'edit':
+        root.closest('.milkdown-code-block')?.querySelector<HTMLElement>('.preview-toggle-button')?.click();
+        break;
+      case 'copy-query':
+        void navigator.clipboard.writeText(state.text);
+        break;
       case 'prev':
         state.page = Math.max(0, state.page - 1);
         replaceContent(root, render(id, state));
@@ -316,9 +349,6 @@ function onClick(e: MouseEvent): void {
         const pageSize = query.page ?? state.result.rows.length;
         const rows = state.result.rows.slice(state.page * pageSize, (state.page + 1) * pageSize);
         void navigator.clipboard.writeText(toMarkdown(state.result, rows));
-        const btn = target.closest<HTMLElement>('[data-act=copy]')!;
-        btn.textContent = 'Copied';
-        setTimeout(() => (btn.textContent = 'Copy as Markdown'), 1200);
         break;
       }
       case 'sort': {
@@ -348,6 +378,10 @@ function onMouseMove(e: MouseEvent): void {
   const target = e.target as HTMLElement;
   const row = target.closest?.('tr[data-path]');
   document.body.classList.toggle('mdw-qt-mod-row', !!row && (e.metaKey || e.ctrlKey));
+}
+
+function closeMenus(): void {
+  document.querySelectorAll('.mdw-qt-menu.open').forEach((m) => m.classList.remove('open'));
 }
 
 function replaceContent(root: HTMLElement, fresh: HTMLElement): void {
