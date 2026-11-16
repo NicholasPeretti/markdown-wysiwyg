@@ -1,4 +1,6 @@
 import { Crepe } from '@milkdown/crepe';
+import { editorViewCtx } from '@milkdown/kit/core';
+import { Selection } from '@milkdown/kit/prose/state';
 import { replaceAll } from '@milkdown/kit/utils';
 import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
@@ -94,6 +96,30 @@ async function createEditor(initial: string): Promise<void> {
   crepe.editor.use(htmlInlineInputRule);
 
   await crepe.create();
+
+  // Clicking the empty area below the content (the padding of #editor /
+  // body) puts the caret at the end of the document, like a text editor.
+  const focusEnd = (e: MouseEvent) => {
+    if (e.button !== 0 || !crepe) {
+      return;
+    }
+    const target = e.target as HTMLElement;
+    if (target.closest('.ProseMirror, .milkdown-slash-menu, .mdw-toc, #frontmatter-host')) {
+      return;
+    }
+    const pm = root.querySelector<HTMLElement>('.ProseMirror');
+    if (!pm || e.clientY < pm.getBoundingClientRect().bottom) {
+      return;
+    }
+    e.preventDefault();
+    crepe.editor.action((ctx) => {
+      const view = ctx.get(editorViewCtx);
+      const { tr, doc } = view.state;
+      view.dispatch(tr.setSelection(Selection.atEnd(doc)).scrollIntoView());
+      view.focus();
+    });
+  };
+  document.body.addEventListener('mousedown', focusEnd);
 
   toc = createToc(root, tocVisible);
 }

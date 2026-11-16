@@ -7,6 +7,13 @@
 
 const URL_RE = /(?:https?:\/\/|mailto:|www\.)[^\s<>"'`)\]]+/g;
 
+/** True when `text` is exactly one URL (ignoring surrounding whitespace). */
+export function isUrl(text: string): boolean {
+  const trimmed = text.trim();
+  const match = trimmed.match(URL_RE);
+  return match?.length === 1 && match[0] === trimmed;
+}
+
 function isModifier(e: MouseEvent | KeyboardEvent): boolean {
   return navigator.platform.toLowerCase().includes('mac') ? e.metaKey : e.ctrlKey;
 }

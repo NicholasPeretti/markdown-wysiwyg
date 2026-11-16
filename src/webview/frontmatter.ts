@@ -7,6 +7,7 @@
  * be represented as a flat map. `null` means the document has no frontmatter.
  */
 import YAML from 'yaml';
+import { isUrl } from './links';
 
 export interface FrontmatterPanel {
   get(): string | null;
@@ -222,6 +223,9 @@ export function createFrontmatterPanel(
     input.spellcheck = false;
     input.placeholder = 'empty';
     input.value = value === null || value === undefined ? '' : String(value);
+    const markLink = () => input.classList.toggle('mdw-fm-link', isUrl(input.value));
+    markLink();
+    input.addEventListener('input', markLink);
     input.addEventListener('change', () => {
       setValue(typeof value === 'number' ? coerceScalar(input.value) : input.value);
       render();
@@ -241,6 +245,7 @@ export function createFrontmatterPanel(
       pill.className = 'mdw-fm-pill';
       const text = document.createElement('span');
       text.textContent = String(v);
+      text.classList.toggle('mdw-fm-link', isUrl(String(v)));
       const x = document.createElement('button');
       x.className = 'mdw-fm-pill-x';
       x.textContent = '✕';
