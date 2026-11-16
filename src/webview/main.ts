@@ -1,7 +1,10 @@
 import { Crepe } from '@milkdown/crepe';
 import { replaceAll } from '@milkdown/kit/utils';
 import { emojiPlugin } from './emoji';
+import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
 import { createToc, type Toc } from './toc';
+import { installLinkHandler } from './links';
+import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
   composeDocument,
   createFrontmatterPanel,
@@ -38,11 +41,12 @@ function armSwallow(): void {
   }, 600);
 }
 
+function editorMarkdown(): string {
+  return unescapeCallouts(crepe?.getMarkdown() ?? '');
+}
+
 function currentDocument(): string {
-  return composeDocument(
-    frontmatterPanel?.get() ?? null,
-    crepe?.getMarkdown() ?? ''
-  );
+  return composeDocument(frontmatterPanel?.get() ?? null, editorMarkdown());
 }
 
 function sendEdit(): void {
@@ -63,6 +67,11 @@ async function createEditor(initial: string): Promise<void> {
   crepe = new Crepe({
     root,
     defaultValue: body,
+    featureConfigs: {
+      [Crepe.Feature.BlockEdit]: {
+        buildMenu: addCalloutSlashItems,
+      },
+    },
   });
 
   crepe.on((listener) => {
@@ -80,6 +89,9 @@ async function createEditor(initial: string): Promise<void> {
   });
 
   crepe.editor.use(emojiPlugin);
+  crepe.editor.use(calloutPlugin);
+  crepe.editor.use(htmlInlinePlugin);
+  crepe.editor.use(htmlInlineInputRule);
 
   await crepe.create();
 
@@ -112,10 +124,12 @@ window.addEventListener('message', async (event) => {
   const { fm, body } = splitFrontmatter(text);
   frontmatterPanel?.set(fm);
 
-  if (body !== crepe.getMarkdown()) {
+  if (body !== editorMarkdown()) {
     armSwallow();
     crepe.editor.action(replaceAll(body));
   }
 });
+
+installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
 
 vscode.postMessage({ type: 'ready' });

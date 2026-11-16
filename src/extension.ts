@@ -74,23 +74,31 @@ function activeTabUri(): vscode.Uri | undefined {
   return undefined;
 }
 
-/** Reopens `uri` with the given editor in place, closing the current tab for it. */
+/**
+ * Reopens `uri` with the given editor in place. Uses VS Code's own
+ * reopen-with command, which swaps the editor input rather than closing the
+ * tab, so a dirty document does not trigger a save prompt. Falls back to
+ * open-then-close when no tab exists for the resource (e.g. diff views).
+ */
 async function reopenWith(
   uri: vscode.Uri,
   viewType: string,
   group: vscode.TabGroup = vscode.window.tabGroups.activeTabGroup
 ): Promise<void> {
-  const oldTabs = group.tabs.filter((tab) => {
+  const isSameResource = (tab: vscode.Tab) => {
     const input = tab.input;
     return (
       (input instanceof vscode.TabInputText || input instanceof vscode.TabInputCustom) &&
       input.uri.toString() === uri.toString()
     );
-  });
-  await vscode.commands.executeCommand('vscode.openWith', uri, viewType, group.viewColumn);
-  if (oldTabs.length > 0) {
-    await vscode.window.tabGroups.close(oldTabs, true);
+  };
+
+  if (group.tabs.some(isSameResource)) {
+    await vscode.commands.executeCommand('reopenActiveEditorWith', viewType, uri);
+    return;
   }
+
+  await vscode.commands.executeCommand('vscode.openWith', uri, viewType, group.viewColumn);
 }
 
 class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
@@ -146,6 +154,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           break;
         case 'tocVisible':
           this.context.globalState.update('tocVisible', message.value);
+          break;
+        case 'openLink':
+          await openLink(String(message.href), document.uri);
           break;
         case 'edit': {
           const incoming: string = message.text;
@@ -206,6 +217,22 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
 </body>
 </html>`;
   }
+}
+
+/** Opens http(s)/mailto links externally; other paths resolve relative to the document. */
+async function openLink(href: string, from: vscode.Uri): Promise<void> {
+  if (/^(https?|mailto):/i.test(href)) {
+    await vscode.env.openExternal(vscode.Uri.parse(href));
+    return;
+  }
+  if (href.startsWith('#')) {
+    return;
+  }
+  const [path] = href.split('#');
+  const target = path.startsWith('/')
+    ? vscode.Uri.file(path)
+    : vscode.Uri.joinPath(from, '..', decodeURIComponent(path));
+  await vscode.commands.executeCommand('vscode.open', target);
 }
 
 function getNonce(): string {

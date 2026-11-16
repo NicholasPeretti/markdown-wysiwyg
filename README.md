@@ -10,6 +10,9 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
   - `Markdown: Open in WYSIWYG Mode`
   - `Markdown: Open in Code Mode`
 - **Live sync** — the WYSIWYG view edits the real `TextDocument`, so undo/redo, dirty state, and save all behave normally.
+- **Callouts** — GitHub-style alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as colored callouts. Insert one from the `/` menu, or click a callout's title to change its kind.
+- **Subscript / superscript** — `H<sub>2</sub>O`, `x<sup>2</sup>` render inline; type the tags to create them, cursor inside reveals them.
+- **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
 - Matches your VS Code color theme.
 
 ## Usage
@@ -33,7 +36,7 @@ To build an installable package:
 
 ```bash
 npx @vscode/vsce package
-code --install-extension markdown-wysiwyg-0.0.1.vsix
+code --install-extension markdown-wysiwyg-0.1.0.vsix
 ```
 
 ## Notes

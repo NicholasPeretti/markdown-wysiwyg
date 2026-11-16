@@ -79,9 +79,26 @@ body {
   margin-top: 0;
 }
 
-/* Lists: comfortable spacing between items. */
+/* Lists: tight spacing between items; paragraph margins only between blocks. */
+.milkdown .ProseMirror ul,
+.milkdown .ProseMirror ol {
+  margin: 0 0 1.1em;
+}
+
 .milkdown .ProseMirror li {
-  margin: 0.3em 0;
+  margin: 0.15em 0;
+}
+
+.milkdown .ProseMirror li p,
+.milkdown .ProseMirror li ul,
+.milkdown .ProseMirror li ol {
+  margin: 0;
+}
+
+/* Align the bullet / number / checkbox with the first text line. */
+.milkdown .milkdown-list-item-block li .label-wrapper,
+.milkdown .milkdown-list-item-block li .label-wrapper .label {
+  height: 28px;
 }
 
 /* Blockquotes: softer, more editorial. */
@@ -92,6 +109,121 @@ body {
   color: var(--crepe-color-on-surface-variant);
   background: var(--crepe-color-inline-area);
   border-radius: 0 6px 6px 0;
+}
+
+/* Callouts: GitHub-style `> [!NOTE]` blockquotes. */
+.milkdown .ProseMirror blockquote.mdw-callout {
+  --mdw-callout-color: var(--vscode-textLink-foreground);
+  color: var(--crepe-color-on-background);
+  border-left-color: var(--mdw-callout-color);
+  background: color-mix(in srgb, var(--mdw-callout-color) 8%, transparent);
+  padding: 0.6em 1.25em 0.1em;
+}
+
+.milkdown .ProseMirror blockquote.mdw-callout-tip {
+  --mdw-callout-color: var(--vscode-testing-iconPassed, #3fb950);
+}
+
+.milkdown .ProseMirror blockquote.mdw-callout-important {
+  --mdw-callout-color: var(--vscode-charts-purple, #ab7df8);
+}
+
+.milkdown .ProseMirror blockquote.mdw-callout-warning {
+  --mdw-callout-color: var(--vscode-editorWarning-foreground, #d29922);
+}
+
+.milkdown .ProseMirror blockquote.mdw-callout-caution {
+  --mdw-callout-color: var(--vscode-editorError-foreground, #f85149);
+}
+
+/* The `[!KIND]` marker is collapsed and replaced by a title badge... */
+.milkdown .ProseMirror .mdw-callout-marker {
+  display: inline-block;
+  font-size: 0;
+  color: transparent;
+  line-height: 1.5;
+}
+
+.milkdown .ProseMirror .mdw-callout-marker::before {
+  content: attr(data-icon) '\00a0\00a0' attr(data-label);
+  font-size: 15px;
+  font-weight: 650;
+  color: var(--mdw-callout-color);
+}
+
+
+/* ...unless the cursor is on it, in which case the raw text is editable. */
+.milkdown .ProseMirror .mdw-callout-marker.editing {
+  display: inline;
+  font-size: 0.85em;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-weight: 600;
+  color: var(--mdw-callout-color);
+  background: color-mix(in srgb, var(--mdw-callout-color) 15%, transparent);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.milkdown .ProseMirror .mdw-callout-marker.editing::before {
+  display: none;
+}
+
+.milkdown .ProseMirror .mdw-callout-marker:not(.editing) {
+  cursor: pointer;
+}
+
+.milkdown .ProseMirror .mdw-callout-marker:not(.editing):hover::before {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+/* Callout kind picker popup. */
+.mdw-callout-popup {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 8px;
+  background: var(--vscode-editorWidget-background);
+  border: 1px solid var(--vscode-editorWidget-border, var(--vscode-panel-border));
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.25);
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 13px;
+  color: var(--vscode-editor-foreground);
+}
+
+.mdw-callout-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 8px;
+  border-radius: 5px;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.mdw-callout-item.mdw-callout-note { color: var(--vscode-textLink-foreground); }
+.mdw-callout-item.mdw-callout-tip { color: var(--vscode-testing-iconPassed, #3fb950); }
+.mdw-callout-item.mdw-callout-important { color: var(--vscode-charts-purple, #ab7df8); }
+.mdw-callout-item.mdw-callout-warning { color: var(--vscode-editorWarning-foreground, #d29922); }
+.mdw-callout-item.mdw-callout-caution { color: var(--vscode-editorError-foreground, #f85149); }
+
+.mdw-callout-item.active,
+.mdw-callout-item:hover {
+  background: var(--vscode-list-hoverBackground);
+}
+
+.mdw-callout-item-icon {
+  width: 20px;
+  text-align: center;
+}
+
+.milkdown .mdw-callout-slash-icon {
+  font-size: 18px;
+  line-height: 24px;
+  width: 24px;
+  display: inline-block;
+  text-align: center;
 }
 
 /* Code blocks: rounded, slightly smaller type, roomy padding. */
@@ -128,10 +260,54 @@ body {
   text-decoration: underline;
 }
 
-/* Tables: a little air in the cells. */
+/* Inline <sub>/<sup>: tags collapse, inner text is raised/lowered. */
+.milkdown .ProseMirror .mdw-html-tag:not(.editing) {
+  display: none;
+}
+
+.milkdown .ProseMirror .mdw-html-tag.editing {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75em;
+  color: var(--crepe-color-on-surface-variant);
+  background: var(--crepe-color-inline-area);
+  border-radius: 3px;
+  padding: 0 2px;
+}
+
+.milkdown .ProseMirror .mdw-sub,
+.milkdown .ProseMirror .mdw-sup {
+  font-size: 0.75em;
+  line-height: 0;
+  position: relative;
+}
+
+.milkdown .ProseMirror .mdw-sub {
+  vertical-align: baseline;
+  bottom: -0.25em;
+}
+
+.milkdown .ProseMirror .mdw-sup {
+  vertical-align: baseline;
+  top: -0.5em;
+}
+
+/* Cmd/Ctrl held: links look clickable, like VS Code. */
+.mdw-mod .milkdown .ProseMirror a {
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+/* Tables: columns size to their content, with a little air in the cells. */
+.milkdown .ProseMirror table {
+  table-layout: auto;
+  width: auto;
+  max-width: 100%;
+}
+
 .milkdown .ProseMirror th,
 .milkdown .ProseMirror td {
   padding: 8px 14px;
+  min-width: 3em;
 }
 
 /* Emoji autocomplete popup. */
