@@ -5,6 +5,13 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
 import { applySlashAliases } from './slash_aliases';
+import {
+  handleQueryMessage,
+  installQueryTables,
+  queryLanguage,
+  renderQueryPreview,
+  addQuerySlashItem,
+} from './query_table';
 import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
@@ -74,8 +81,16 @@ async function createEditor(initial: string): Promise<void> {
       [Crepe.Feature.BlockEdit]: {
         buildMenu: (builder) => {
           addCalloutSlashItems(builder);
+          addQuerySlashItem(builder);
           applySlashAliases(builder, crepe!.editor.ctx);
         },
+      },
+      [Crepe.Feature.CodeMirror]: {
+        languages: [queryLanguage],
+        renderPreview: renderQueryPreview,
+        previewOnlyByDefault: true,
+        previewLabel: 'Result',
+        previewLoading: 'Querying…',
       },
     },
   });
@@ -130,6 +145,9 @@ async function createEditor(initial: string): Promise<void> {
 
 window.addEventListener('message', async (event) => {
   const message = event.data;
+  if (message && handleQueryMessage(message)) {
+    return;
+  }
   if (message?.type === 'toggleToc') {
     const visible = toc?.toggle() ?? false;
     vscode.postMessage({ type: 'tocVisible', value: visible });
@@ -161,5 +179,9 @@ window.addEventListener('message', async (event) => {
 });
 
 installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
+installQueryTables({
+  post: (message) => vscode.postMessage(message),
+  ctx: () => crepe?.editor.ctx,
+});
 
 vscode.postMessage({ type: 'ready' });

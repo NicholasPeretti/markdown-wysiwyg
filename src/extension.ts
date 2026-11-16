@@ -1,4 +1,6 @@
 import * as vscode from 'vscode';
+import { FileIndex, runQuery } from './query/host';
+import { complete } from './query/complete';
 
 const VIEW_TYPE = 'markdownWysiwyg.editor';
 
@@ -35,6 +37,26 @@ export function activate(context: vscode.ExtensionContext) {
       activePanel?.webview.postMessage({ type: 'toggleToc' });
     }),
 
+    vscode.commands.registerCommand('markdownWysiwyg.rebuildQueryIndex', async () => {
+      await Promise.all([...indexes.values()].map((index) => index.rebuild()));
+      vscode.window.setStatusBarMessage('Markdown query index rebuilt', 3000);
+    }),
+
+    vscode.languages.registerCompletionItemProvider(
+      'markdown',
+      new QueryCompletionProvider(),
+      ':', ' ', '.', '"', ','
+    ),
+
+    vscode.workspace.onDidChangeWorkspaceFolders((e) => {
+      for (const folder of e.removed) {
+        indexes.get(folder.uri.toString())?.dispose();
+        indexes.delete(folder.uri.toString());
+      }
+    }),
+
+    { dispose: () => indexes.forEach((index) => index.dispose()) },
+
     // VS Code's editor history can reopen markdown as plain text (e.g. after
     // viewing a diff). Redirect such tabs back to WYSIWYG, unless the user
     // explicitly switched that file to code mode.
@@ -52,6 +74,75 @@ export function activate(context: vscode.ExtensionContext) {
       }
     })
   );
+}
+
+/** One query index per workspace folder, created lazily. */
+const indexes = new Map<string, FileIndex>();
+
+function indexFor(uri: vscode.Uri): FileIndex | undefined {
+  const folder = vscode.workspace.getWorkspaceFolder(uri) ?? vscode.workspace.workspaceFolders?.[0];
+  if (!folder) return undefined;
+  const key = folder.uri.toString();
+  let index = indexes.get(key);
+  if (!index) {
+    index = new FileIndex(folder);
+    indexes.set(key, index);
+  }
+  return index;
+}
+
+/** Completions inside ```query fences of a plain-text Markdown editor. */
+class QueryCompletionProvider implements vscode.CompletionItemProvider {
+  async provideCompletionItems(
+    document: vscode.TextDocument,
+    position: vscode.Position
+  ): Promise<vscode.CompletionItem[] | undefined> {
+    if (!insideQueryFence(document, position.line)) return undefined;
+    const index = indexFor(document.uri);
+    if (!index) return undefined;
+    await index.ensure();
+    const line = document.lineAt(position.line).text;
+    const result = complete(line, position.character, index.completionContext());
+    if (!result) return undefined;
+    const range = new vscode.Range(position.line, result.from, position.line, position.character);
+    const kinds: { [k: string]: vscode.CompletionItemKind } = {
+      key: vscode.CompletionItemKind.Property,
+      field: vscode.CompletionItemKind.Field,
+      operator: vscode.CompletionItemKind.Operator,
+      value: vscode.CompletionItemKind.Value,
+      folder: vscode.CompletionItemKind.Folder,
+      keyword: vscode.CompletionItemKind.Keyword,
+    };
+    return result.items.map((item, i) => {
+      const ci = new vscode.CompletionItem(item.label, kinds[item.kind]);
+      ci.insertText = item.insert ?? item.label;
+      ci.range = range;
+      ci.detail = item.detail;
+      ci.sortText = String(i).padStart(4, '0');
+      return ci;
+    });
+  }
+}
+
+function insideQueryFence(document: vscode.TextDocument, line: number): boolean {
+  let open = false;
+  for (let i = 0; i < line; i++) {
+    const text = document.lineAt(i).text;
+    if (/^\s*(```|~~~)/.test(text)) {
+      if (open) {
+        open = false;
+      } else if (/^\s*(```|~~~)\s*query\s*$/i.test(text)) {
+        open = true;
+      } else {
+        // Some other fence: skip to its close.
+        open = false;
+        for (i++; i < line; i++) {
+          if (/^\s*(```|~~~)/.test(document.lineAt(i).text)) break;
+        }
+      }
+    }
+  }
+  return open;
 }
 
 /** Files the user explicitly switched to code mode this session. */
@@ -140,6 +231,10 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       postContent();
     });
 
+    const indexSub = indexFor(document.uri)?.onDidChange(() => {
+      webviewPanel.webview.postMessage({ type: 'queryRefresh' });
+    });
+
     const viewStateSub = webviewPanel.onDidChangeViewState(() => {
       if (webviewPanel.active) {
         activeCustomEditorUri = document.uri;
@@ -158,6 +253,36 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
         case 'openLink':
           await openLink(String(message.href), document.uri);
           break;
+        case 'openFile': {
+          const index = indexFor(document.uri);
+          if (index) {
+            const target = vscode.Uri.joinPath(index.folder.uri, String(message.path));
+            await vscode.commands.executeCommand('vscode.open', target);
+          }
+          break;
+        }
+        case 'query': {
+          const index = indexFor(document.uri);
+          if (!index) {
+            webviewPanel.webview.postMessage({ type: 'queryError', id: message.id, message: 'No workspace folder open' });
+            break;
+          }
+          await index.ensure();
+          const result = runQuery(String(message.text), index.records());
+          if ('error' in result) {
+            webviewPanel.webview.postMessage({ type: 'queryError', id: message.id, message: result.error });
+          } else {
+            webviewPanel.webview.postMessage({ type: 'queryResult', id: message.id, ...result });
+          }
+          break;
+        }
+        case 'queryContext': {
+          const index = indexFor(document.uri);
+          if (!index) break;
+          await index.ensure();
+          webviewPanel.webview.postMessage({ type: 'queryContextResult', id: message.id, ...index.completionContext() });
+          break;
+        }
         case 'edit': {
           const incoming: string = message.text;
           if (incoming === document.getText()) {
@@ -182,6 +307,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
 
     webviewPanel.onDidDispose(() => {
       changeSub.dispose();
+      indexSub?.dispose();
       viewStateSub.dispose();
       if (activePanel === webviewPanel) {
         activePanel = undefined;

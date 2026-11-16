@@ -11,7 +11,9 @@
   "categories": [
     "Other"
   ],
-  "activationEvents": [],
+  "activationEvents": [
+    "onLanguage:markdown"
+  ],
   "main": "./dist/extension.js",
   "contributes": {
     "customEditors": [
@@ -43,6 +45,10 @@
       {
         "command": "markdownWysiwyg.toggleToc",
         "title": "Markdown: Toggle Table of Contents"
+      },
+      {
+        "command": "markdownWysiwyg.rebuildQueryIndex",
+        "title": "Markdown WYSIWYG: Rebuild Query Index"
       }
     ],
     "keybindings": [
@@ -101,6 +107,8 @@
     "typescript": "^5.6.0"
   },
   "dependencies": {
+    "@codemirror/autocomplete": "^6.20.4",
+    "@codemirror/language": "^6.13.1",
     "@milkdown/crepe": "^7.5.0",
     "@milkdown/kit": "^7.5.0",
     "gemoji": "^8.1.0",

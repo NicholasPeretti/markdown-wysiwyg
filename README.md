@@ -13,6 +13,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **Callouts** — GitHub-style alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as colored callouts. Insert one from the `/` menu, or click a callout's title to change its kind.
 - **Subscript / superscript** — `H<sub>2</sub>O`, `x<sup>2</sup>` render inline; type the tags to create them, cursor inside reveals them.
 - **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
+- **Query tables** — Notion-style live tables of workspace files. A ```` ```query ```` fenced block (insert with `/query`) renders as a table; see [Query tables](#query-tables) below.
 - Matches your VS Code color theme.
 
 ## Usage
@@ -22,6 +23,36 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 3. To return, click the code icon or run **Markdown: Open in Code Mode**.
 
 You can also right-click a file → **Open With…** → **Markdown WYSIWYG**, and set it as the default for markdown if you prefer WYSIWYG-first.
+
+## Query tables
+
+A fenced code block with language `query` renders as a live table of the markdown files in your workspace, filtered by path, frontmatter and file metadata. The block stays plain markdown (other viewers show the query text).
+
+````markdown
+```query
+from: notes
+where: draft == true and tags contains "kibana"
+sort: file.modified desc
+limit: 10
+columns: file.name, title, status, file.modified
+```
+````
+
+| Key | Meaning |
+| --- | --- |
+| `from` | Folder (recursive) or glob, relative to the workspace folder. Default: whole workspace. |
+| `where` | Filter expression; repeat the line to AND several. Operators: `==` `!=` `<` `<=` `>` `>=` `contains` `startsWith` `endsWith` `matches` `exists`, combined with `and` / `or` / `not` and parentheses. |
+| `sort` | `<field> asc|desc`. Default: `file.modified desc`. Click a column header to change it. |
+| `limit` | Max rows (default 50). |
+| `page` | Page size; shows a pager in the table header. |
+| `columns` | Columns to show. Default: `file.name, file.path, file.modified` plus any fields used in `where`/`sort`. |
+
+Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Missing fields compare like Notion: `!=` is true, everything else is false.
+
+- **Cmd/Ctrl+click** a row to open the file.
+- **Copy as Markdown** turns the current result into a static table.
+- Results refresh automatically when files change; run **Markdown WYSIWYG: Rebuild Query Index** if they look stale.
+- Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
 
 ## Development
 
