@@ -1204,7 +1204,7 @@ body {
 }
 .milkdown .milkdown-code-block .preview .mdw-mermaid-expand {
   position: absolute;
-  top: 4px;
+  bottom: 4px;
   right: 4px;
   display: inline-flex;
   align-items: center;
@@ -1281,4 +1281,12 @@ body {
 .mdw-mermaid-hud .mdw-mermaid-zoom {
   min-width: 40px;
   text-align: center;
+}
+
+/* Diagram blocks: the language picker adds nothing, keep only Copy/Edit. */
+.milkdown .milkdown-code-block:has(.preview [class^='mdw-mermaid']) .tools {
+  justify-content: flex-end;
+}
+.milkdown .milkdown-code-block:has(.preview [class^='mdw-mermaid']) .tools > .language-button {
+  display: none;
 }
