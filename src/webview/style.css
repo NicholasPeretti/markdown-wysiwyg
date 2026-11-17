@@ -689,6 +689,12 @@ body {
  * Query tables (```query blocks) — Notion-style database view
  * ------------------------------------------------------------------------- */
 
+.milkdown .milkdown-code-block .preview-panel .preview:has(.mdw-qt),
+.milkdown .milkdown-code-block:has(.mdw-qt),
+.milkdown .milkdown-code-block:has(.mdw-qt) .preview-panel {
+  overflow: visible;
+}
+
 .milkdown .milkdown-code-block .preview-panel .preview:has(.mdw-qt) {
   padding: 0;
   background: transparent;
@@ -724,34 +730,8 @@ body {
   text-align: left;
 }
 
-/* Actions overlay the header row so the table starts flush with the content above. */
-.mdw-qt-header {
-  position: absolute;
-  top: 1px;
-  right: 0;
-  height: 32px;
-  display: flex;
-  align-items: center;
-  padding-left: 8px;
-  background: var(--vscode-editor-background);
-  color: var(--vscode-descriptionForeground);
-  font-size: 12px;
-}
-
-.mdw-qt-header button {
-  all: unset;
-  cursor: pointer;
-  padding: 2px 6px;
-  border-radius: 4px;
-  color: var(--vscode-descriptionForeground);
-}
-
-.mdw-qt-header button:hover:not([disabled]) {
-  background: var(--vscode-list-hoverBackground);
-  color: var(--vscode-editor-foreground);
-}
-
 .mdw-qt-actions {
+  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -765,13 +745,13 @@ body {
   opacity: 1;
 }
 
-.mdw-qt-header .mdw-qt-edit {
+.mdw-qt-footer .mdw-qt-edit {
   display: inline-flex;
   align-items: center;
   padding: 3px 5px;
 }
 
-.mdw-qt-editing .mdw-qt-header .mdw-qt-edit {
+.mdw-qt-editing .mdw-qt-footer .mdw-qt-edit {
   background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
   color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
 }
@@ -796,7 +776,7 @@ body {
   min-width: 160px;
   padding: 4px;
   flex-direction: column;
-  background: var(--vscode-menu-background, var(--vscode-editorWidget-background));
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
   color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
   border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
   border-radius: 6px;
@@ -808,7 +788,7 @@ body {
   display: flex;
 }
 
-.mdw-qt-header .mdw-qt-menu-list button {
+.mdw-qt-footer .mdw-qt-menu-list button {
   color: inherit;
   padding: 5px 10px;
   font-size: 12px;
@@ -816,7 +796,7 @@ body {
   white-space: nowrap;
 }
 
-.mdw-qt-header .mdw-qt-menu-list button:hover {
+.mdw-qt-footer .mdw-qt-menu-list button:hover {
   background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, inherit);
 }
@@ -826,16 +806,20 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 6px 8px;
+  padding: 4px 4px 4px 8px;
   color: var(--vscode-descriptionForeground);
   font-size: 12px;
+}
+
+.mdw-qt-footer .mdw-qt-count,
+.mdw-qt-footer .mdw-qt-pager {
   opacity: 0.8;
 }
 
 .mdw-qt-footer button {
   all: unset;
   cursor: pointer;
-  padding: 0 5px;
+  padding: 2px 5px;
   border-radius: 4px;
   color: var(--vscode-descriptionForeground);
 }
@@ -966,14 +950,12 @@ body {
 
 .mdw-qt-status {
   padding: 8px 2px;
-  min-height: 33px;
-  box-sizing: border-box;
   color: var(--vscode-descriptionForeground);
   font-style: italic;
 }
 
 .mdw-qt-error {
-  padding: 8px 60px 8px 10px;
+  padding: 8px 10px;
   border-left: 3px solid var(--vscode-inputValidation-errorBorder, #f14c4c);
   background: var(--vscode-inputValidation-errorBackground, rgba(241, 76, 76, 0.1));
   color: var(--vscode-editor-foreground);

@@ -180,8 +180,8 @@ function renderShell(id: string, inner: string, withMenu = true): HTMLElement {
   el.className = 'mdw-qt';
   el.dataset.qid = id;
   el.innerHTML = inner;
-  if (withMenu && !el.querySelector('.mdw-qt-header')) {
-    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-header">${MENU_HTML}</div>`);
+  if (withMenu && !el.querySelector('.mdw-qt-footer')) {
+    el.insertAdjacentHTML('beforeend', `<div class="mdw-qt-footer">${MENU_HTML}</div>`);
   }
   return el;
 }
@@ -231,11 +231,11 @@ function render(id: string, state: BlockState): HTMLElement {
 
   return renderShell(
     id,
-    `<div class="mdw-qt-header">${MENU_HTML}</div>
-    <div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    `<div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
     <div class="mdw-qt-footer">
       <span class="mdw-qt-count">${count}</span>
       ${pager}
+      ${MENU_HTML}
     </div>`
   );
 }
