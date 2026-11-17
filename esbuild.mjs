@@ -18,12 +18,15 @@ const extensionCtx = await esbuild.context({
 
 /** Webview bundle (browser). CSS imports are emitted to dist/webview.css. */
 const webviewCtx = await esbuild.context({
-  entryPoints: ['src/webview/main.ts'],
+  entryPoints: { webview: 'src/webview/main.ts' },
   bundle: true,
-  format: 'iife',
+  // ESM + splitting so heavy optional modules (mermaid) load lazily.
+  format: 'esm',
+  splitting: true,
+  chunkNames: 'chunks/[name]-[hash]',
   platform: 'browser',
   target: 'es2022',
-  outfile: 'dist/webview.js',
+  outdir: 'dist',
   sourcemap: !production,
   minify: production,
   loader: {

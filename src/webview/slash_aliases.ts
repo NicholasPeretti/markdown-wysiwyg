@@ -30,6 +30,7 @@ const ALIASES: Record<string, string[]> = {
   image: ['img', 'picture'],
   quote: ['blockquote'],
   query: ['table', 'db', 'database'],
+  mermaid: ['diagram', 'chart', 'graph', 'flowchart'],
 };
 
 export function currentSlashFilter(ctx: Ctx): string {

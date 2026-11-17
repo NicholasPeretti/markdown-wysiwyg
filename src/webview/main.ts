@@ -6,6 +6,7 @@ import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
 import { applySlashAliases } from './slash_aliases';
 import { installOverflowWatcher } from './overflow';
+import { addMermaidSlashItem, installMermaidViewer, renderMermaidPreview } from './mermaid';
 import {
   handleQueryMessage,
   installQueryTables,
@@ -83,15 +84,19 @@ async function createEditor(initial: string): Promise<void> {
         buildMenu: (builder) => {
           addCalloutSlashItems(builder);
           addQuerySlashItem(builder);
+          addMermaidSlashItem(builder);
           applySlashAliases(builder, crepe!.editor.ctx);
         },
       },
       [Crepe.Feature.CodeMirror]: {
         languages: [queryLanguage],
-        renderPreview: renderQueryPreview,
+        renderPreview: (language, content, apply) =>
+          renderQueryPreview(language, content, apply) === undefined
+            ? undefined
+            : renderMermaidPreview(language, content, apply),
         previewOnlyByDefault: true,
-        previewLabel: 'Result',
-        previewLoading: 'Querying…',
+        previewLabel: 'Preview',
+        previewLoading: 'Rendering…',
       },
     },
   });
@@ -181,6 +186,7 @@ window.addEventListener('message', async (event) => {
 
 installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
 installOverflowWatcher(document.body);
+installMermaidViewer();
 installQueryTables({
   post: (message) => vscode.postMessage(message),
   ctx: () => crepe?.editor.ctx,
