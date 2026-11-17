@@ -5,6 +5,7 @@ import { replaceAll } from '@milkdown/kit/utils';
 import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
 import { applySlashAliases } from './slash_aliases';
+import { installOverflowWatcher } from './overflow';
 import {
   handleQueryMessage,
   installQueryTables,
@@ -179,6 +180,7 @@ window.addEventListener('message', async (event) => {
 });
 
 installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
+installOverflowWatcher(document.body);
 installQueryTables({
   post: (message) => vscode.postMessage(message),
   ctx: () => crepe?.editor.ctx,
