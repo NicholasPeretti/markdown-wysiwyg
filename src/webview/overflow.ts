@@ -7,7 +7,9 @@
  * clip`, which is *not* a scroll container) and are scrolled by translating
  * the table from wheel/trackpad events, with a slim custom scrollbar.
  */
-const SELECTOR = '.milkdown-table-block .table-wrapper, .mdw-qt-scroll';
+const WRAPPERS = ['.milkdown-table-block .table-wrapper', '.mdw-qt-scroll'];
+const SELECTOR = WRAPPERS.join(', ');
+const TABLES = WRAPPERS.map((w) => `${w} > table`).join(', ');
 
 interface ScrollState {
   x: number;
@@ -25,6 +27,7 @@ export function installOverflowWatcher(root: HTMLElement): void {
   });
 
   const scan = () => {
+    root.querySelectorAll<HTMLElement>(TABLES).forEach(sizeTextColumns);
     root.querySelectorAll<HTMLElement>(SELECTOR).forEach((el) => {
       if (seen.has(el)) return;
       seen.add(el);
@@ -64,6 +67,35 @@ function revealSelectedCell(): void {
   const pad = 16;
   if (rect.left < view.left) setScroll(wrapper, state, state.x - (view.left - rect.left) - pad);
   else if (rect.right > view.right) setScroll(wrapper, state, state.x + (rect.right - view.right) + pad);
+}
+
+const MAX_SIZED_COLUMNS = 24;
+
+/**
+ * Columns with a lot of prose get a minimum width so the browser's auto
+ * layout can't squeeze them into a sliver next to columns with unbreakable
+ * content; wide tables scroll anyway. Widths are set as CSS variables on the
+ * wrapper (outside ProseMirror's editable DOM, which must not be touched).
+ */
+function sizeTextColumns(table: HTMLElement): void {
+  const wrapper = table.parentElement;
+  if (!wrapper) return;
+  const longest: number[] = [];
+  table.querySelectorAll<HTMLElement>(':scope > tbody > tr, :scope > thead > tr').forEach((row) => {
+    Array.from(row.children).forEach((cell, i) => {
+      const len = (cell.textContent ?? '').trim().length;
+      longest[i] = Math.max(longest[i] ?? 0, len);
+    });
+  });
+  for (let i = 0; i < MAX_SIZED_COLUMNS; i++) {
+    const len = longest[i] ?? 0;
+    const width = len >= 160 ? '24em' : len >= 60 ? '16em' : '';
+    const prop = `--mdw-col-${i + 1}`;
+    if (wrapper.style.getPropertyValue(prop) !== width) {
+      if (width) wrapper.style.setProperty(prop, width);
+      else wrapper.style.removeProperty(prop);
+    }
+  }
 }
 
 function tableOf(wrapper: HTMLElement): HTMLElement | null {
