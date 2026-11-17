@@ -975,12 +975,13 @@ body {
 }
 
 /* Wide tables scroll horizontally inside their block instead of widening the
-   page. `mdw-overflow` is toggled from JS (overflow.ts) only when the content
-   really overflows, because a scroll container would defeat the sticky header. */
+   page. `mdw-overflow` is toggled from JS (overflow.ts) and scrolling is done
+   by translating the table, because a real scroll container would stop the
+   header rows from sticking to the page. */
 .milkdown .milkdown-table-block .table-wrapper.mdw-overflow,
 .mdw-qt-scroll.mdw-overflow {
-  overflow-x: auto;
-  overflow-y: hidden;
+  position: relative;
+  overflow-x: clip;
   max-width: 100%;
 }
 
@@ -988,6 +989,42 @@ body {
   /* Room for the row/column drag handles that sit on the table's outer edge. */
   padding: 10px 0 0 10px;
   margin-left: -10px;
+}
+
+.mdw-overflow > table {
+  will-change: transform;
+}
+
+.mdw-hscroll {
+  position: sticky;
+  bottom: 4px;
+  height: 6px;
+  margin-top: 2px;
+  border-radius: 3px;
+  background: var(--vscode-scrollbarSlider-background, rgba(128, 128, 128, 0.15));
+  opacity: 0;
+  transition: opacity 0.2s;
+  user-select: none;
+}
+
+.mdw-overflow:hover .mdw-hscroll,
+.mdw-hscroll-active,
+.mdw-hscroll-dragging {
+  opacity: 1;
+}
+
+.mdw-hscroll-thumb {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-radius: 3px;
+  background: var(--vscode-scrollbarSlider-hoverBackground, rgba(128, 128, 128, 0.5));
+  cursor: grab;
+}
+
+.mdw-hscroll-dragging .mdw-hscroll-thumb {
+  background: var(--vscode-scrollbarSlider-activeBackground, rgba(128, 128, 128, 0.7));
+  cursor: grabbing;
 }
 
 .mdw-qt-scroll {
