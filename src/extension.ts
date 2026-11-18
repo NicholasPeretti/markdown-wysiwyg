@@ -11,7 +11,7 @@ export function activate(context: vscode.ExtensionContext) {
       VIEW_TYPE,
       new MarkdownWysiwygProvider(context),
       {
-        webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true },
+        webviewOptions: { retainContextWhenHidden: true },
         supportsMultipleEditorsPerDocument: false,
       }
     ),

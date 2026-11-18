@@ -16,6 +16,7 @@ import {
 } from './query_table';
 import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
+import { findPlugin, installFind } from './find';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
   composeDocument,
@@ -119,6 +120,7 @@ async function createEditor(initial: string): Promise<void> {
   crepe.editor.use(calloutPlugin);
   crepe.editor.use(htmlInlinePlugin);
   crepe.editor.use(htmlInlineInputRule);
+  crepe.editor.use(findPlugin);
 
   await crepe.create();
 
@@ -187,6 +189,7 @@ window.addEventListener('message', async (event) => {
 installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
 installOverflowWatcher(document.body);
 installMermaidViewer();
+installFind(() => crepe?.editor.ctx);
 installQueryTables({
   post: (message) => vscode.postMessage(message),
   ctx: () => crepe?.editor.ctx,

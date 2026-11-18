@@ -1338,3 +1338,96 @@ body {
 .milkdown .milkdown-code-block:has(.preview [class^='mdw-mermaid']) .tools > .language-button {
   display: none;
 }
+
+/* ---- Find bar (Cmd/Ctrl+F) ---------------------------------------------- */
+
+.mdw-find {
+  position: fixed;
+  top: 0;
+  right: 28px;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px 6px;
+  background: var(--vscode-editorWidget-background, #252526);
+  color: var(--vscode-editorWidget-foreground, inherit);
+  border: 1px solid var(--vscode-widget-border, transparent);
+  border-top: 0;
+  border-radius: 0 0 4px 4px;
+  box-shadow: 0 2px 8px var(--vscode-widget-shadow, rgba(0, 0, 0, 0.36));
+  font-family: var(--vscode-font-family);
+  font-size: 13px;
+}
+
+.mdw-find[hidden] {
+  display: none;
+}
+
+.mdw-find-input {
+  width: 180px;
+  height: 24px;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border: 1px solid var(--vscode-input-border, transparent);
+  border-radius: 2px;
+  background: var(--vscode-input-background, #3c3c3c);
+  color: var(--vscode-input-foreground, inherit);
+  font: inherit;
+  outline: none;
+}
+
+.mdw-find-input:focus {
+  border-color: var(--vscode-focusBorder);
+}
+
+.mdw-find-none .mdw-find-input {
+  border-color: var(--vscode-inputValidation-errorBorder, #be1100);
+}
+
+.mdw-find-count {
+  min-width: 64px;
+  padding: 0 4px;
+  color: var(--vscode-editorWidget-foreground, inherit);
+  opacity: 0.85;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.mdw-find-none .mdw-find-count {
+  color: var(--vscode-errorForeground, #f48771);
+  opacity: 1;
+}
+
+.mdw-find-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vscode-icon-foreground, inherit);
+  cursor: pointer;
+}
+
+.mdw-find-btn:hover:not(:disabled) {
+  background: var(--vscode-toolbar-hoverBackground, rgba(128, 128, 128, 0.2));
+}
+
+.mdw-find-btn:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.milkdown .ProseMirror .mdw-find-match {
+  background: var(--vscode-editor-findMatchHighlightBackground, rgba(234, 92, 0, 0.33));
+  border-radius: 2px;
+}
+
+.milkdown .ProseMirror .mdw-find-match-active {
+  background: var(--vscode-editor-findMatchBackground, #9e6a03);
+  outline: 1px solid var(--vscode-editor-findMatchBorder, transparent);
+}
