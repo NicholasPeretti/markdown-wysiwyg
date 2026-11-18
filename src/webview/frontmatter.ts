@@ -8,7 +8,7 @@
  */
 import YAML from 'yaml';
 import { isUrl } from './links';
-import { parseRelations, type Relation } from '../query/relations';
+import { RELATIONS_KEY, parseRelations, type Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
 import { onRelationOptionsChanged, peekOptions } from './relation_options';
 
@@ -126,7 +126,7 @@ export function createFrontmatterPanel(
       return;
     }
     entries = parseEntries(raw as string);
-    relations = parseRelations(Object.fromEntries(entries ?? []).relations, '');
+    relations = parseRelations(Object.fromEntries(entries ?? [])[RELATIONS_KEY], '');
     const structured = entries !== null && !rawMode;
     modeButton.textContent = structured ? '{ }' : '⊞';
     modeButton.style.display = entries === null ? 'none' : 'inline-block';
@@ -176,7 +176,17 @@ export function createFrontmatterPanel(
         .item(current.length)
         ?.focus();
     });
-    rows.appendChild(addProp);
+    const actions = document.createElement('div');
+    actions.className = 'mdw-fm-actions';
+    actions.appendChild(addProp);
+    if (!current.some(([k]) => k === RELATIONS_KEY)) {
+      const addRel = document.createElement('button');
+      addRel.className = 'mdw-fm-add-prop';
+      addRel.textContent = '+ Add relation';
+      addRel.addEventListener('click', () => openRelationForm(current));
+      actions.appendChild(addRel);
+    }
+    rows.appendChild(actions);
     return rows;
   };
 
@@ -211,6 +221,7 @@ export function createFrontmatterPanel(
 
     const relation = relations.get(key);
     if (relation) icon.textContent = relation.multi ? '⊞' : '▾';
+    if (key === RELATIONS_KEY) icon.textContent = '↔';
     if (index < 0) {
       // Implicit row from `relations:`; it gets a real entry once a value is set.
       keyInput.disabled = true;
@@ -243,14 +254,20 @@ export function createFrontmatterPanel(
     }
 
     if (typeof value === 'boolean') {
+      const host = document.createElement('label');
+      host.className = 'mdw-fm-value mdw-fm-check-host';
       const checkbox = document.createElement('input');
       checkbox.type = 'checkbox';
       checkbox.className = 'mdw-fm-check';
       checkbox.checked = value;
-      checkbox.addEventListener('change', () => setValue(checkbox.checked));
-      const host = document.createElement('div');
-      host.className = 'mdw-fm-value';
-      host.appendChild(checkbox);
+      checkbox.addEventListener('change', () => {
+        setValue(checkbox.checked);
+        render();
+      });
+      const text = document.createElement('span');
+      text.className = 'mdw-fm-check-label';
+      text.textContent = value ? 'Yes' : 'No';
+      host.append(checkbox, text);
       return host;
     }
 
@@ -258,14 +275,8 @@ export function createFrontmatterPanel(
       return renderPills(value, setValue);
     }
 
-    if (index >= 0 && current[index][0] === 'relations' && value !== null && typeof value === 'object') {
-      const host = document.createElement('div');
-      host.className = 'mdw-fm-value mdw-fm-complex mdw-fm-schema';
-      host.textContent = [...relations.entries()]
-        .map(([f, r]) => `${f} → ${r.folder || '.'}${r.field ? `.${r.field}` : ''}${r.multi ? ' (multi)' : ''}`)
-        .join(', ');
-      host.title = `${YAML.stringify(value).trimEnd()}\n\nEdit in raw YAML mode`;
-      return host;
+    if (index >= 0 && current[index][0] === RELATIONS_KEY) {
+      return renderSchema(current);
     }
 
     if (value !== null && typeof value === 'object') {
@@ -295,30 +306,18 @@ export function createFrontmatterPanel(
     values: unknown[],
     setValue: (next: unknown) => void
   ): HTMLElement => {
-    const host = document.createElement('div');
-    host.className = 'mdw-fm-value mdw-fm-pills';
+    const host = pillHost();
 
     values.forEach((v, i) => {
-      const pill = document.createElement('span');
-      pill.className = 'mdw-fm-pill';
-      const text = document.createElement('span');
-      text.textContent = String(v);
-      text.classList.toggle('mdw-fm-link', isUrl(String(v)));
-      const x = document.createElement('button');
-      x.className = 'mdw-fm-pill-x';
-      x.textContent = '✕';
-      x.addEventListener('click', () => {
-        setValue(values.filter((_, j) => j !== i));
-        render();
-      });
-      pill.append(text, x);
-      host.appendChild(pill);
+      host.appendChild(
+        pill(String(v), isUrl(String(v)) ? 'mdw-fm-link' : '', () => {
+          setValue(values.filter((_, j) => j !== i));
+          render();
+        })
+      );
     });
 
-    const input = document.createElement('input');
-    input.className = 'mdw-fm-pill-input';
-    input.placeholder = '+';
-    input.spellcheck = false;
+    const input = pillInput(values.length === 0);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter' && input.value.trim() !== '') {
         setValue([...values, coerceScalar(input.value)]);
@@ -332,6 +331,48 @@ export function createFrontmatterPanel(
     return host;
   };
 
+  /** Pill container; clicking its empty space focuses the trailing input. */
+  const pillHost = (): HTMLElement => {
+    const host = document.createElement('div');
+    host.className = 'mdw-fm-value mdw-fm-pills';
+    host.addEventListener('mousedown', (e) => {
+      if (e.target === host) {
+        e.preventDefault();
+        host.querySelector<HTMLInputElement>('.mdw-fm-pill-input')?.focus();
+      }
+    });
+    return host;
+  };
+
+  const pillInput = (empty: boolean): HTMLInputElement => {
+    const input = document.createElement('input');
+    input.className = 'mdw-fm-pill-input';
+    input.placeholder = empty ? 'Add…' : '';
+    input.setAttribute('aria-label', 'Add value');
+    input.spellcheck = false;
+    return input;
+  };
+
+  const pill = (label: string, textClass: string, onRemove: () => void): HTMLElement => {
+    const el = document.createElement('span');
+    el.className = 'mdw-fm-pill';
+    const text = document.createElement('span');
+    text.textContent = label;
+    if (textClass) text.className = textClass;
+    const x = document.createElement('button');
+    x.className = 'mdw-fm-pill-x';
+    x.title = 'Remove';
+    x.setAttribute('aria-label', `Remove ${label}`);
+    x.textContent = '✕';
+    x.addEventListener('mousedown', (e) => e.preventDefault());
+    x.addEventListener('click', (e) => {
+      e.stopPropagation();
+      onRemove();
+    });
+    el.append(text, x);
+    return el;
+  };
+
   const relationValues = (value: unknown): string[] =>
     (Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value]).map(String);
 
@@ -342,8 +383,8 @@ export function createFrontmatterPanel(
   ): HTMLElement => {
     const values = relationValues(value);
     const options = peekOptions(relation) ?? [];
-    const host = document.createElement('div');
-    host.className = 'mdw-fm-value mdw-fm-pills mdw-fm-relation';
+    const host = pillHost();
+    host.classList.add('mdw-fm-relation');
 
     values.forEach((v, i) => {
       const option = options.find((o) => o.value === v);
@@ -355,10 +396,7 @@ export function createFrontmatterPanel(
       );
     });
 
-    const input = document.createElement('input');
-    input.className = 'mdw-fm-pill-input';
-    input.placeholder = '+';
-    input.spellcheck = false;
+    const input = pillInput(values.length === 0);
     const open = () => {
       if (editingField !== undefined) return;
       editingField = relation.folder;
@@ -378,7 +416,6 @@ export function createFrontmatterPanel(
       });
     };
     input.addEventListener('focus', open);
-    input.addEventListener('mousedown', () => input.focus());
     host.appendChild(input);
     return host;
   };
@@ -465,25 +502,101 @@ export function createFrontmatterPanel(
   };
 
   const relationPill = (v: string, option: PickerOption | undefined, onRemove: () => void): HTMLElement => {
-    const pill = document.createElement('span');
-    pill.className = 'mdw-fm-pill mdw-fm-rel';
-    if (!option) pill.classList.add('mdw-fm-rel-missing');
-    pill.title = option ? '⌘-click to open' : 'No such option';
-    const text = document.createElement('span');
-    text.textContent = option?.label ?? v;
-    text.addEventListener('click', (e) => {
+    const el = pill(option?.label ?? v, '', onRemove);
+    el.classList.add('mdw-fm-rel');
+    if (!option) el.classList.add('mdw-fm-rel-missing');
+    el.title = option ? '⌘-click to open' : 'No such option';
+    (el.firstElementChild as HTMLElement).addEventListener('click', (e: MouseEvent) => {
       if ((e.metaKey || e.ctrlKey) && option) {
         e.preventDefault();
         e.stopPropagation();
         hooks.openFile?.(option.path);
       }
     });
-    const x = document.createElement('button');
-    x.className = 'mdw-fm-pill-x';
-    x.textContent = '✕';
-    x.addEventListener('click', onRemove);
-    pill.append(text, x);
-    return pill;
+    return el;
+  };
+
+  // ---- $relations schema editing -------------------------------------------
+
+  /** Writes the relation map back as a `$relations` entry (block YAML). */
+  const commitRelations = (current: Entry[], next: Map<string, Relation>) => {
+    const obj: Record<string, unknown> = {};
+    for (const [field, r] of next) {
+      const spec: Record<string, unknown> = { from: r.folder };
+      if (r.field) spec.field = r.field;
+      if (r.multi) spec.multi = true;
+      obj[field] = spec;
+    }
+    const without = current.filter(([k]) => k !== RELATIONS_KEY);
+    commit(next.size ? [...without, [RELATIONS_KEY, obj]] : without);
+    render();
+  };
+
+  const renderSchema = (current: Entry[]): HTMLElement => {
+    const host = document.createElement('div');
+    host.className = 'mdw-fm-value mdw-fm-pills mdw-fm-schema';
+    for (const [field, r] of relations) {
+      const el = pill(`${field} → ${r.folder || '.'}${r.field ? `.${r.field}` : ''}${r.multi ? ' ⊞' : ''}`, '', () => {
+        const next = new Map(relations);
+        next.delete(field);
+        commitRelations(current, next);
+      });
+      el.classList.add('mdw-fm-schema-pill');
+      el.title = 'Click to edit';
+      el.firstElementChild!.addEventListener('click', () => openRelationForm(current, field));
+      host.appendChild(el);
+    }
+    const add = document.createElement('button');
+    add.className = 'mdw-fm-pill-add';
+    add.textContent = relations.size ? '+' : '+ Add relation';
+    add.addEventListener('click', () => openRelationForm(current));
+    host.appendChild(add);
+    return host;
+  };
+
+  /** Inline form (below the rows) to add or edit one relation declaration. */
+  const openRelationForm = (current: Entry[], editField?: string) => {
+    body.querySelector('.mdw-fm-relform')?.remove();
+    const existing = editField ? relations.get(editField) : undefined;
+    const form = document.createElement('div');
+    form.className = 'mdw-fm-relform';
+    form.innerHTML = `
+      <div class="mdw-fm-relform-title">${editField ? 'Edit relation' : 'New relation'}</div>
+      <label>Field <input class="mdw-fm-text" data-k="field" placeholder="tags" spellcheck="false" /></label>
+      <label>Options from folder <input class="mdw-fm-text" data-k="from" placeholder="tags" spellcheck="false" /></label>
+      <label>Value field <input class="mdw-fm-text" data-k="vfield" placeholder="(file name)" spellcheck="false" /></label>
+      <label class="mdw-fm-relform-check"><input type="checkbox" data-k="multi" /> Multiple values</label>
+      <div class="mdw-fm-relform-actions">
+        <button class="mdw-fm-relform-save">${editField ? 'Save' : 'Add'}</button>
+        <button class="mdw-fm-relform-cancel">Cancel</button>
+      </div>`;
+    const q = (k: string) => form.querySelector<HTMLInputElement>(`[data-k="${k}"]`)!;
+    q('field').value = editField ?? '';
+    q('from').value = existing?.folder ?? '';
+    q('vfield').value = existing?.field ?? '';
+    q('multi').checked = existing?.multi ?? false;
+    const save = () => {
+      const field = q('field').value.trim();
+      const from = q('from').value.trim();
+      if (!field || !from) {
+        (field ? q('from') : q('field')).focus();
+        return;
+      }
+      const next = new Map(relations);
+      if (editField && editField !== field) next.delete(editField);
+      next.set(field, { folder: from.replace(/^\.?\/|\/$/g, ''), field: q('vfield').value.trim() || undefined, multi: q('multi').checked });
+      commitRelations(current, next);
+    };
+    form.querySelector('.mdw-fm-relform-save')!.addEventListener('click', save);
+    form.querySelector('.mdw-fm-relform-cancel')!.addEventListener('click', () => form.remove());
+    form.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && (e.target as HTMLElement).tagName === 'INPUT') {
+        e.preventDefault();
+        save();
+      } else if (e.key === 'Escape') form.remove();
+    });
+    body.appendChild(form);
+    q(editField ? 'from' : 'field').focus();
   };
 
   modeButton.addEventListener('click', () => {

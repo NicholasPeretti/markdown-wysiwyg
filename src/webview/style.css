@@ -508,8 +508,29 @@ body {
   opacity: 0.5;
 }
 
+.mdw-fm-check-host {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  padding: 0 6px;
+  cursor: pointer;
+  border-radius: 4px;
+  user-select: none;
+}
+.mdw-fm-check-host:hover {
+  background: var(--vscode-input-background);
+}
 .mdw-fm-check {
-  margin: 7px 4px;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  cursor: pointer;
+  accent-color: var(--vscode-textLink-foreground);
+}
+.mdw-fm-check-label {
+  color: var(--vscode-descriptionForeground);
+  font-size: 12px;
 }
 
 .mdw-fm-complex {
@@ -527,44 +548,83 @@ body {
   flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 3px 4px;
+  min-height: 28px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  cursor: text;
+}
+.mdw-fm-pills:hover,
+.mdw-fm-pills:focus-within {
+  background: var(--vscode-input-background);
 }
 
 .mdw-fm-pill {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
   background: var(--vscode-badge-background);
   color: var(--vscode-badge-foreground);
-  border-radius: 10px;
-  padding: 1px 4px 1px 8px;
+  border-radius: 11px;
+  padding: 0 0 0 9px;
   font-size: 12px;
-  line-height: 18px;
+  line-height: 22px;
+  height: 22px;
+  cursor: default;
 }
 
 .mdw-fm-pill-x {
-  background: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  margin-left: 1px;
   border: none;
+  border-radius: 0 11px 11px 0;
+  background: none;
   cursor: pointer;
   color: inherit;
-  font-size: 9px;
-  padding: 0 2px;
-  opacity: 0.6;
+  font-size: 10px;
+  opacity: 0.55;
 }
-
+.mdw-fm-pill:hover .mdw-fm-pill-x {
+  opacity: 0.9;
+}
 .mdw-fm-pill-x:hover {
-  opacity: 1;
+  opacity: 1 !important;
+  background: rgba(0, 0, 0, 0.2);
 }
 
 .mdw-fm-pill-input {
+  flex: 1 1 60px;
+  min-width: 60px;
+  height: 22px;
   border: none;
   outline: none;
   background: transparent;
   color: var(--vscode-editor-foreground);
   font: inherit;
-  font-size: 12px;
-  width: 60px;
-  padding: 2px;
+  font-size: 13px;
+  padding: 0 4px;
+}
+.mdw-fm-pill-input::placeholder {
+  color: var(--vscode-descriptionForeground);
+  opacity: 0.6;
+}
+
+/* Row delete only on hover, bigger hit target. */
+.mdw-fm-row-del {
+  width: 24px;
+  height: 26px;
+  opacity: 0;
+}
+.mdw-fm-row:hover .mdw-fm-row-del,
+.mdw-fm-row:focus-within .mdw-fm-row-del {
+  opacity: 1;
+}
+
+.mdw-fm-actions {
+  display: flex;
+  gap: 8px;
 }
 
 .mdw-fm-add-prop {
@@ -1550,15 +1610,100 @@ body {
   border-style: dashed;
 }
 .mdw-fm-schema {
-  line-height: 26px;
-  padding: 0 4px;
-  font-size: 13px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  color: var(--vscode-descriptionForeground);
-  font-family: inherit;
+  cursor: default;
 }
+.mdw-fm-schema-pill {
+  background: transparent;
+  color: var(--vscode-descriptionForeground);
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.35));
+  line-height: 20px;
+  height: 20px;
+}
+.mdw-fm-schema-pill > span:first-child {
+  cursor: pointer;
+}
+.mdw-fm-schema-pill > span:first-child:hover {
+  color: var(--vscode-foreground);
+}
+.mdw-fm-pill-add {
+  height: 22px;
+  min-width: 22px;
+  padding: 0 8px;
+  border: 1px dashed var(--vscode-widget-border, rgba(128, 128, 128, 0.4));
+  border-radius: 11px;
+  background: none;
+  color: var(--vscode-descriptionForeground);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.mdw-fm-pill-add:hover {
+  color: var(--vscode-textLink-foreground);
+  border-color: var(--vscode-textLink-foreground);
+}
+
+.mdw-fm-relform {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px 12px;
+  margin: 6px 0 2px 26px;
+  padding: 10px 12px;
+  border: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.3));
+  border-radius: 6px;
+  background: var(--vscode-editorWidget-background, var(--vscode-editor-background));
+  font-size: 12px;
+}
+.mdw-fm-relform-title {
+  grid-column: 1 / -1;
+  font-weight: 600;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+}
+.mdw-fm-relform label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  color: var(--vscode-descriptionForeground);
+}
+.mdw-fm-relform .mdw-fm-text {
+  background: var(--vscode-input-background);
+  border-radius: 4px;
+  color: var(--vscode-input-foreground);
+  width: 100%;
+  box-sizing: border-box;
+}
+.mdw-fm-relform-check {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  cursor: pointer;
+}
+.mdw-fm-relform-check input {
+  accent-color: var(--vscode-textLink-foreground);
+}
+.mdw-fm-relform-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+.mdw-fm-relform-actions button {
+  font: inherit;
+  font-size: 12px;
+  padding: 4px 12px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  background: var(--vscode-button-secondaryBackground, rgba(128, 128, 128, 0.2));
+  color: var(--vscode-button-secondaryForeground, inherit);
+}
+.mdw-fm-relform-save {
+  background: var(--vscode-button-background) !important;
+  color: var(--vscode-button-foreground) !important;
+}
+
 .mdw-fm-select-host {
   display: flex;
   align-items: center;

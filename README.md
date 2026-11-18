@@ -16,7 +16,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
 - **Mermaid diagrams** — ```` ```mermaid ```` blocks render as diagrams (insert with `/diagram`); flowcharts are shown in whichever orientation (LR/TD) fits the page better — add a `%% keep-direction` comment to opt out; toggle back to the source with the code block's preview button. Hover a diagram for zoom controls (−/+/Reset, or ⌘-scroll; drag to pan when zoomed) and ⛶ to open it full screen (`+`/`-` zoom, `0` fit, `Esc` close).
 - **Query tables** — Notion-style live tables of workspace files. A ```` ```query ```` fenced block (insert with `/query`) renders as a table; see [Query tables](#query-tables) below.
-- **Relations** — Notion-style relation fields whose options are the files of another folder (tags, people, statuses…): chips with autocomplete or a dropdown. Declared per file under `relations:`; see [Relations](#relations) below.
+- **Relations** — Notion-style relation fields whose options are the files of another folder (tags, people, statuses…): chips with autocomplete or a dropdown. Declared per file under `$relations:`, editable from the properties panel; see [Relations](#relations) below.
 - Matches your VS Code color theme.
 
 ## Usage
@@ -62,16 +62,23 @@ Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`
 
 ## Relations
 
-A file can declare in its own frontmatter that some of its fields are **relations** — fields whose values come from the files of another folder, like a Notion relation property:
+A file can declare in its own frontmatter that some of its fields are **relations** — fields whose values come from the files of another folder, like a Notion relation property. Declarations live under the reserved `$relations` key (the `$` keeps it apart from your own fields):
 
 ```yaml
 ---
 title: Query items
-relations:
-  tags: { from: tags, field: name, multi: true }   # chips with autocomplete
-  status: { from: statuses, field: name }          # dropdown
+$relations:
+  tags:            # chips with autocomplete
+    from: tags
+    field: name
+    multi: true
+  status:          # dropdown
+    from: statuses
+    field: name
 ---
 ```
+
+You can also manage declarations from the properties panel: **+ Add relation** (or the `+` in the `$relations` row) opens a small form; click a declaration to edit it, ✕ to remove it.
 
 | Key | Meaning |
 | --- | --- |

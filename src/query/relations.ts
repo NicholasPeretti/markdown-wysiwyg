@@ -1,10 +1,16 @@
 /**
  * Relations between "databases" (folders), Notion-style. A file declares in
- * its own frontmatter which of its fields are relations:
+ * its own frontmatter which of its fields are relations, under the reserved
+ * `$relations` key:
  *
- *   relations:
- *     tags: { from: tags, field: name, multi: true }
- *     status: { from: statuses, field: name }
+ *   $relations:
+ *     tags:
+ *       from: tags
+ *       field: name
+ *       multi: true
+ *     status:
+ *       from: statuses
+ *       field: name
  *
  * `from` is the folder holding the options (workspace-relative, or `./x`
  * relative to the file), `field` the frontmatter field of an option file
@@ -37,10 +43,13 @@ export interface RelationSource {
 
 const INDEX_NAMES = ['index.md', 'README.md', 'readme.md', 'index.markdown'];
 
+/** Reserved frontmatter key holding the relation declarations. */
+export const RELATIONS_KEY = '$relations';
+
 /** Relations declared by the file at `relPath` (field → relation). */
 export function relationsFor(source: RelationSource, relPath: string): Map<string, Relation> {
   const rec = source.record(relPath);
-  return rec ? parseRelations(rec.fm.relations, dirname(relPath)) : new Map();
+  return rec ? parseRelations(rec.fm[RELATIONS_KEY], dirname(relPath)) : new Map();
 }
 
 /** Parses a `relations:` frontmatter value; `base` resolves `./` folders. */
