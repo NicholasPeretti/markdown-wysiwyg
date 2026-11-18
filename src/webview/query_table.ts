@@ -45,6 +45,8 @@ interface BlockState {
   result?: Result;
   error?: string;
   page: number;
+  /** Free-text filter typed in the footer; never written to the file. */
+  search: string;
   /** Group labels the user has folded. */
   collapsed: Set<string>;
   apply: (el: HTMLElement) => void;
@@ -72,6 +74,9 @@ export function installQueryTables(h: Host): void {
   document.addEventListener('click', onClick, true);
   document.addEventListener('dblclick', onDoubleClick, true);
   document.addEventListener('mousemove', onMouseMove, true);
+  document.addEventListener('focusin', onFocusIn, true);
+  document.addEventListener('input', onFilterInput, true);
+  document.addEventListener('keydown', onFilterKeydown, true);
 }
 
 /** `renderPreview` for Crepe's code block config. */
@@ -83,7 +88,7 @@ export function renderQueryPreview(
   if (language.toLowerCase() !== 'query') return null;
   // Identify the block by its text; identical blocks share state, which is fine.
   const id = blockId(content);
-  const state: BlockState = blocks.get(id) ?? { text: content, page: 0, collapsed: new Set(), apply };
+  const state: BlockState = blocks.get(id) ?? { text: content, page: 0, search: '', collapsed: new Set(), apply };
   state.apply = apply;
   state.text = content;
   blocks.set(id, state);
@@ -217,26 +222,34 @@ function render(id: string, state: BlockState): HTMLElement {
   const result = state.result!;
   const { query } = parseQuery(state.text);
   const grouped = !!result.groups;
-  const pageSize = grouped ? result.rows.length : (query.page ?? result.rows.length);
-  const pageCount = Math.max(1, Math.ceil(result.rows.length / pageSize));
+  const visible = filterRows(result, state.search);
+  const pageSize = grouped ? visible.rows.length : (query.page ?? visible.rows.length);
+  const pageCount = Math.max(1, Math.ceil(visible.rows.length / pageSize));
   const page = Math.min(state.page, pageCount - 1);
   const start = page * pageSize;
-  const rows = result.rows.slice(start, start + pageSize);
+  const rows = visible.rows.slice(start, start + pageSize);
   const sort = query.sort[0];
 
   const noun = query.distinct ? 'value' : 'file';
-  const count =
-    result.total > result.rows.length
+  const plural = (n: number) => `${noun}${n === 1 ? '' : 's'}`;
+  const count = state.search.trim()
+    ? `${visible.rows.length} of ${result.total} ${plural(result.total)}`
+    : result.total > result.rows.length
       ? `${result.rows.length} of ${result.total} ${noun}s`
-      : `${result.total} ${noun}${result.total === 1 ? '' : 's'}`;
+      : `${result.total} ${plural(result.total)}`;
   const pager =
     pageCount > 1
       ? `<span class="mdw-qt-pager">
           <button data-act="prev" ${page === 0 ? 'disabled' : ''} title="Previous page">‹</button>
-          <span>${start + 1}–${Math.min(start + pageSize, result.rows.length)}</span>
+          <span>${start + 1}–${Math.min(start + pageSize, visible.rows.length)}</span>
           <button data-act="next" ${page >= pageCount - 1 ? 'disabled' : ''} title="Next page">›</button>
         </span>`
       : '';
+  const filter = `<span class="mdw-qt-filter${state.search ? ' open' : ''}">
+      <button data-act="filter" title="Filter rows">${FILTER_ICON}</button>
+      <input type="text" placeholder="Filter rows…" spellcheck="false" value="${escapeAttr(state.search)}" aria-label="Filter rows">
+      <button data-act="clear-filter" title="Clear filter">×</button>
+    </span>`;
 
   const head = result.columns
     .map((c) => {
@@ -255,12 +268,14 @@ function render(id: string, state: BlockState): HTMLElement {
         return `<td${attrs}>${mode ? renderEditableCell(cell, mode) : renderCell(cell)}</td>`;
       })
       .join('')}</tr>`;
-  const empty = `<tbody><tr class="mdw-qt-empty"><td colspan="${result.columns.length}">No files match</td></tr></tbody>`;
+  const empty = `<tbody><tr class="mdw-qt-empty"><td colspan="${result.columns.length}">${
+    state.search.trim() ? `No rows match “${escapeHtml(state.search.trim())}”` : 'No files match'
+  }</td></tr></tbody>`;
 
   let body: string;
-  if (result.groups) {
-    body = result.groups.length
-      ? result.groups
+  if (visible.groups) {
+    body = visible.groups.length
+      ? visible.groups
           .map((g) => {
             const label = g.value.kind === 'null' ? `No ${query.group}` : cellText(g.value);
             const folded = state.collapsed.has(label);
@@ -272,7 +287,7 @@ function render(id: string, state: BlockState): HTMLElement {
                   <span class="mdw-qt-group-count">${g.rows.length}</span>
                 </td>
               </tr>
-              ${folded ? '' : g.rows.map((i) => renderRow(result.rows[i])).join('')}
+              ${folded ? '' : g.rows.map((i) => renderRow(visible.rows[i])).join('')}
             </tbody>`;
           })
           .join('')
@@ -287,8 +302,35 @@ function render(id: string, state: BlockState): HTMLElement {
     <div class="mdw-qt-footer">
       <span class="mdw-qt-count">${count}</span>
       ${pager}
+      ${filter}
     </div>`
   );
+}
+
+const FILTER_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>';
+
+/**
+ * Keeps the rows whose visible cells contain every word of `search`
+ * (case-insensitive). Groups are re-pointed at the kept rows and emptied
+ * groups dropped, so the folding headers stay accurate.
+ */
+function filterRows(result: Result, search: string): Pick<Result, 'rows' | 'groups'> {
+  const terms = search.toLowerCase().split(/\s+/).filter(Boolean);
+  if (!terms.length) return result;
+  const index = new Map<number, number>();
+  const rows: Result['rows'] = [];
+  result.rows.forEach((row, i) => {
+    const hay = (row.cells.map(cellText).join('\n') + '\n' + row.path).toLowerCase();
+    if (terms.every((t) => hay.includes(t))) {
+      index.set(i, rows.length);
+      rows.push(row);
+    }
+  });
+  const groups = result.groups
+    ?.map((g) => ({ value: g.value, rows: g.rows.filter((i) => index.has(i)).map((i) => index.get(i)!) }))
+    .filter((g) => g.rows.length);
+  return { rows, groups };
 }
 
 function renderCell(cell: Cell): string {
@@ -782,12 +824,32 @@ function onClick(e: MouseEvent): void {
         state.page += 1;
         replaceContent(root, render(id, state));
         break;
+      case 'filter': {
+        const box = target.closest<HTMLElement>('.mdw-qt-filter')!;
+        const input = box.querySelector<HTMLInputElement>('input')!;
+        if (box.classList.toggle('open')) {
+          input.focus();
+        } else if (state.search) {
+          state.search = '';
+          state.page = 0;
+          replaceContent(root, render(id, state));
+        }
+        break;
+      }
+      case 'clear-filter':
+        state.search = '';
+        state.page = 0;
+        replaceContent(root, render(id, state));
+        root.querySelector<HTMLElement>('.mdw-qt-filter')?.classList.add('open');
+        root.querySelector<HTMLInputElement>('.mdw-qt-filter input')?.focus();
+        break;
       case 'copy': {
         if (!state.result) break;
         const { query } = parseQuery(state.text);
-        const pageSize = query.page ?? state.result.rows.length;
-        const page = Math.min(state.page, Math.max(0, Math.ceil(state.result.rows.length / pageSize) - 1));
-        const rows = state.result.rows.slice(page * pageSize, (page + 1) * pageSize);
+        const visible = filterRows(state.result, state.search);
+        const pageSize = query.page ?? visible.rows.length;
+        const page = Math.min(state.page, Math.max(0, Math.ceil(visible.rows.length / pageSize) - 1));
+        const rows = visible.rows.slice(page * pageSize, (page + 1) * pageSize);
         void navigator.clipboard.writeText(toMarkdown(state.result, rows));
         break;
       }
@@ -820,6 +882,53 @@ function onMouseMove(e: MouseEvent): void {
   document.body.classList.toggle('mdw-qt-mod-row', !!row && (e.metaKey || e.ctrlKey));
 }
 
+// ---------------------------------------------------------------------------
+// Footer filter
+
+function filterInput(target: EventTarget | null): { input: HTMLInputElement; root: HTMLElement; id: string } | null {
+  const input = target as HTMLInputElement | null;
+  if (!input?.matches?.('.mdw-qt-filter input')) return null;
+  const root = input.closest<HTMLElement>('.mdw-qt');
+  return root ? { input, root, id: root.dataset.qid! } : null;
+}
+
+/** The filter box is re-created on every render, so wire it lazily on focus. */
+function onFocusIn(e: FocusEvent): void {
+  const hit = filterInput(e.target);
+  if (!hit || hit.input.dataset.wired) return;
+  hit.input.dataset.wired = '1';
+  isolateInput(hit.input);
+}
+
+function onFilterInput(e: Event): void {
+  const hit = filterInput(e.target);
+  if (!hit) return;
+  const state = blocks.get(hit.id);
+  if (!state) return;
+  state.search = hit.input.value;
+  state.page = 0;
+  replaceContent(hit.root, render(hit.id, state));
+}
+
+function onFilterKeydown(e: KeyboardEvent): void {
+  const hit = filterInput(e.target);
+  if (!hit || e.key !== 'Escape') return;
+  const state = blocks.get(hit.id);
+  if (!state) return;
+  e.preventDefault();
+  e.stopPropagation();
+  if (state.search) {
+    state.search = '';
+    state.page = 0;
+    replaceContent(hit.root, render(hit.id, state));
+    hit.root.querySelector<HTMLElement>('.mdw-qt-filter')?.classList.add('open');
+    hit.root.querySelector<HTMLInputElement>('.mdw-qt-filter input')?.focus();
+  } else {
+    hit.input.closest('.mdw-qt-filter')?.classList.remove('open');
+    hit.input.blur();
+  }
+}
+
 /** Reflects edit/result mode on the toggle (the block is re-rendered by Vue, so query the DOM). */
 function syncEditToggle(block: HTMLElement | null, editing: boolean): void {
   block?.classList.toggle('mdw-qt-editing', editing);
@@ -834,7 +943,19 @@ function closeMenus(): void {
 }
 
 function replaceContent(root: HTMLElement, fresh: HTMLElement): void {
+  // Keep the caret in the filter box across the re-render it triggers.
+  const active = document.activeElement as HTMLInputElement | null;
+  const typing = !!active && active.matches('.mdw-qt-filter input') && root.contains(active);
+  const open = !!root.querySelector('.mdw-qt-filter.open');
+  const sel = typing ? [active.selectionStart ?? 0, active.selectionEnd ?? 0] : null;
   root.innerHTML = fresh.innerHTML;
+  const box = root.querySelector<HTMLElement>('.mdw-qt-filter');
+  if (box && open) box.classList.add('open');
+  if (typing && box) {
+    const input = box.querySelector<HTMLInputElement>('input')!;
+    input.focus({ preventScroll: true });
+    input.setSelectionRange(sel![0], sel![1]);
+  }
 }
 
 /** Replaces the text of the code block that owns `root` in the ProseMirror doc. */

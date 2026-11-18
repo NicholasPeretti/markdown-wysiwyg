@@ -982,6 +982,68 @@ body {
   gap: 4px;
 }
 
+/* Footer filter: a quiet magnifier that expands into a text box. */
+.mdw-qt-filter {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  min-width: 0;
+}
+
+.mdw-qt-filter > button {
+  display: inline-flex;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.mdw-qt:hover .mdw-qt-filter > button,
+.mdw-qt-filter.open > button,
+.mdw-qt-filter > button:focus-visible {
+  opacity: 1;
+}
+
+.mdw-qt-filter input {
+  all: unset;
+  box-sizing: border-box;
+  width: 0;
+  padding: 0;
+  opacity: 0;
+  font: inherit;
+  color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
+  background: var(--vscode-input-background, transparent);
+  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 4px;
+  transition:
+    width 0.15s ease,
+    opacity 0.15s;
+}
+
+.mdw-qt-filter.open input {
+  width: 160px;
+  padding: 2px 6px;
+  opacity: 1;
+}
+
+.mdw-qt-filter input:focus {
+  border-color: var(--vscode-focusBorder, rgba(128, 128, 128, 0.6));
+}
+
+.mdw-qt-filter input::placeholder {
+  color: var(--vscode-input-placeholderForeground, var(--vscode-descriptionForeground));
+}
+
+.mdw-qt-filter [data-act='clear-filter'] {
+  display: none;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.mdw-qt-filter.open:has(input:not(:placeholder-shown)) [data-act='clear-filter'] {
+  display: inline-flex;
+}
+
 /* Table: horizontal dividers only, full width, muted header. */
 .milkdown .ProseMirror .mdw-qt table {
   border-collapse: collapse;
