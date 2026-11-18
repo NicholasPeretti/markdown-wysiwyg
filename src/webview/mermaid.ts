@@ -83,15 +83,53 @@ export function renderMermaidPreview(language: string, content: string, apply: A
   return undefined;
 }
 
+const DIRECTION_RE = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TD|TB|BT)\b/m;
+/** Only switch orientation when it buys at least this much extra scale. */
+const REORIENT_GAIN = 1.1;
+const MAX_UPSCALE = 1.25;
+
+function viewBoxSize(svg: string): { w: number; h: number } | undefined {
+  const vb = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"/.exec(svg);
+  return vb ? { w: Number(vb[1]), h: Number(vb[2]) } : undefined;
+}
+
+/** Scale at which a diagram of the given natural size fits the preview box. */
+function fitScale(size: { w: number; h: number } | undefined): number {
+  if (!size) return 1;
+  const column = document.querySelector<HTMLElement>('.milkdown .ProseMirror');
+  const w = (column?.clientWidth ?? 800) - 40;
+  const h = window.innerHeight * 0.7;
+  return Math.min(w / size.w, h / size.h, MAX_UPSCALE);
+}
+
+/**
+ * Flowcharts: render the other orientation too and keep whichever fits the
+ * box at the larger scale. `%% keep-direction` in the source opts out.
+ */
+async function renderBestOrientation(mermaid: Mermaid, id: string, text: string): Promise<string> {
+  const { svg } = await mermaid.render(id, text);
+  const m = DIRECTION_RE.exec(text);
+  if (!m || /%%\s*keep-direction/.test(text)) return svg;
+  const flipped = m[2] === 'LR' || m[2] === 'RL' ? 'TD' : 'LR';
+  const alt = text.replace(DIRECTION_RE, `$1${flipped}`);
+  try {
+    const { svg: altSvg } = await mermaid.render(`${id}-alt`, alt);
+    return fitScale(viewBoxSize(altSvg)) >= fitScale(viewBoxSize(svg)) * REORIENT_GAIN ? altSvg : svg;
+  } catch {
+    document.getElementById(`d${id}-alt`)?.remove();
+    return svg;
+  }
+}
+
 async function draw(text: string, apply: Apply): Promise<void> {
   const id = `mdw-mermaid-${++seq}`;
   try {
     const mermaid = await load();
     configure(mermaid);
-    const { svg } = await mermaid.render(id, text);
+    const svg = await renderBestOrientation(mermaid, id, text);
     // Natural width caps the upscaling (see .mdw-mermaid-stage svg rules).
-    const vb = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) /.exec(svg);
-    const size = vb ? ` style="--mdw-nat-w: ${vb[1]}px"` : '';
+    const nat = viewBoxSize(svg);
+    const size = nat ? ` style="--mdw-nat-w: ${nat.w}px"` : '';
     const html = `<div class="mdw-mermaid"${size}><div class="mdw-mermaid-stage">${svg}</div><div class="mdw-mermaid-hud">${HUD_HTML(false)}</div></div>`;
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
     cache.set(text, html);
