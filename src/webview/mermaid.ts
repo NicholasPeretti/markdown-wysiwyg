@@ -51,10 +51,18 @@ function configure(mermaid: Mermaid): void {
   });
 }
 
-const EXPAND_BUTTON =
-  '<button class="mdw-mermaid-expand" data-act="mermaid-expand" title="Open full screen" type="button">' +
-  '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M2 2h5v1.5H3.5V7H2V2zm12 0v5h-1.5V3.5H9V2h5zM2 14V9h1.5v3.5H7V14H2zm12 0H9v-1.5h3.5V9H14v5z"/></svg>' +
-  '</button>';
+const EXPAND_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor"><path d="M2 2h5v1.5H3.5V7H2V2zm12 0v5h-1.5V3.5H9V2h5zM2 14V9h1.5v3.5H7V14H2zm12 0H9v-1.5h3.5V9H14v5z"/></svg>';
+
+const HUD_HTML = (full: boolean) =>
+  '<button data-v="out" title="Zoom out" type="button">−</button>' +
+  '<span class="mdw-mermaid-zoom">100%</span>' +
+  '<button data-v="in" title="Zoom in" type="button">+</button>' +
+  (full
+    ? '<button data-v="fit" title="Fit (0)" type="button">Fit</button>' +
+      '<button data-v="close" title="Close (Esc)" type="button">✕</button>'
+    : '<button data-v="reset" title="Reset zoom" type="button">Reset</button>' +
+      `<button data-v="expand" title="Open full screen" type="button">${EXPAND_ICON}</button>`);
 
 /** `renderPreview` for Crepe's code block config. */
 export function renderMermaidPreview(language: string, content: string, apply: Apply): undefined | null {
@@ -79,7 +87,7 @@ async function draw(text: string, apply: Apply): Promise<void> {
     const mermaid = await load();
     configure(mermaid);
     const { svg } = await mermaid.render(id, text);
-    const html = `<div class="mdw-mermaid">${EXPAND_BUTTON}${svg}</div>`;
+    const html = `<div class="mdw-mermaid"><div class="mdw-mermaid-stage">${svg}</div><div class="mdw-mermaid-hud">${HUD_HTML(false)}</div></div>`;
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
     cache.set(text, html);
     apply(html);
@@ -113,39 +121,121 @@ export function addMermaidSlashItem(builder: SlashMenuBuilder): void {
   });
 }
 
-// ---- Full-screen viewer ----
+// ---- Pan & zoom (inline preview and full-screen viewer) ----
 
 const ZOOM_MIN = 0.1;
 const ZOOM_MAX = 8;
 
-interface Viewer {
-  overlay: HTMLElement;
+interface PanZoom {
+  container: HTMLElement;
   stage: HTMLElement;
-  label: HTMLElement;
-  width: number;
-  height: number;
   x: number;
   y: number;
   scale: number;
 }
 
-let viewer: Viewer | undefined;
+const inline = new WeakMap<HTMLElement, PanZoom>();
+let overlay: PanZoom | undefined;
 
-/** Opens the full-screen viewer when a diagram's expand button is clicked. */
+function panZoomFor(target: EventTarget | null): PanZoom | undefined {
+  const el = (target as HTMLElement | null)?.closest<HTMLElement>('.mdw-mermaid, .mdw-mermaid-overlay');
+  if (!el) return undefined;
+  if (el === overlay?.container) return overlay;
+  let pz = inline.get(el);
+  if (!pz) {
+    const stage = el.querySelector<HTMLElement>(':scope > .mdw-mermaid-stage');
+    if (!stage) return undefined;
+    pz = { container: el, stage, x: 0, y: 0, scale: 1 };
+    inline.set(el, pz);
+  }
+  return pz;
+}
+
+/** Wires zoom/pan for inline diagrams and the full-screen viewer (event delegation:
+ *  the preview DOM is recreated by Crepe on every edit). */
 export function installMermaidViewer(): void {
   document.addEventListener(
     'click',
     (e) => {
-      const btn = (e.target as HTMLElement).closest<HTMLElement>('[data-act="mermaid-expand"]');
+      const btn = (e.target as HTMLElement).closest<HTMLElement>('.mdw-mermaid-hud [data-v]');
       if (!btn) return;
-      const svg = btn.parentElement?.querySelector<SVGSVGElement>(':scope > svg');
-      if (!svg) return;
+      const pz = panZoomFor(btn);
+      if (!pz) return;
       e.preventDefault();
       e.stopPropagation();
-      openViewer(svg);
+      const { clientWidth: w, clientHeight: h } = pz.container;
+      const rect = pz.container.getBoundingClientRect();
+      switch (btn.dataset.v) {
+        case 'in':
+          zoomAt(pz, 1.25, rect.left + w / 2, rect.top + h / 2);
+          break;
+        case 'out':
+          zoomAt(pz, 0.8, rect.left + w / 2, rect.top + h / 2);
+          break;
+        case 'reset':
+          reset(pz);
+          break;
+        case 'fit':
+          fit(pz);
+          break;
+        case 'expand': {
+          const svg = pz.stage.querySelector<SVGSVGElement>(':scope > svg');
+          if (svg) openViewer(svg);
+          break;
+        }
+        case 'close':
+          closeViewer();
+          break;
+      }
     },
     true
   );
+
+  document.addEventListener(
+    'wheel',
+    (e) => {
+      const pz = panZoomFor(e.target);
+      if (!pz) return;
+      const full = pz === overlay;
+      if (e.ctrlKey || e.metaKey) {
+        e.preventDefault();
+        zoomAt(pz, Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
+      } else if (full || pz.scale !== 1) {
+        e.preventDefault();
+        pz.x -= e.deltaX;
+        pz.y -= e.deltaY;
+        applyTransform(pz);
+      }
+    },
+    { passive: false, capture: true }
+  );
+
+  let drag: { pz: PanZoom; x: number; y: number; px: number; py: number } | undefined;
+  document.addEventListener(
+    'pointerdown',
+    (e) => {
+      if (e.button !== 0 || (e.target as HTMLElement).closest('.mdw-mermaid-hud')) return;
+      const pz = panZoomFor(e.target);
+      if (!pz || (pz !== overlay && pz.scale === 1)) return;
+      e.preventDefault();
+      drag = { pz, x: pz.x, y: pz.y, px: e.clientX, py: e.clientY };
+      pz.container.setPointerCapture(e.pointerId);
+      pz.container.classList.add('dragging');
+    },
+    true
+  );
+  document.addEventListener('pointermove', (e) => {
+    if (!drag) return;
+    drag.pz.x = drag.x + (e.clientX - drag.px);
+    drag.pz.y = drag.y + (e.clientY - drag.py);
+    applyTransform(drag.pz);
+  });
+  const endDrag = () => {
+    drag?.pz.container.classList.remove('dragging');
+    drag = undefined;
+  };
+  document.addEventListener('pointerup', endDrag);
+  document.addEventListener('pointercancel', endDrag);
 }
 
 function svgSize(svg: SVGSVGElement): { width: number; height: number } {
@@ -163,120 +253,91 @@ function openViewer(source: SVGSVGElement): void {
   svg.setAttribute('width', String(width));
   svg.setAttribute('height', String(height));
 
-  const overlay = document.createElement('div');
-  overlay.className = 'mdw-mermaid-overlay';
-  overlay.tabIndex = -1;
+  const container = document.createElement('div');
+  container.className = 'mdw-mermaid-overlay';
+  container.tabIndex = -1;
   const stage = document.createElement('div');
   stage.className = 'mdw-mermaid-stage';
   stage.appendChild(svg);
   const hud = document.createElement('div');
   hud.className = 'mdw-mermaid-hud';
-  hud.innerHTML =
-    '<button data-v="out" title="Zoom out (-)">−</button>' +
-    '<span class="mdw-mermaid-zoom"></span>' +
-    '<button data-v="in" title="Zoom in (+)">+</button>' +
-    '<button data-v="fit" title="Fit (0)">Fit</button>' +
-    '<button data-v="close" title="Close (Esc)">✕</button>';
-  overlay.append(stage, hud);
-  document.body.appendChild(overlay);
+  hud.innerHTML = HUD_HTML(true);
+  container.append(stage, hud);
+  document.body.appendChild(container);
 
-  const v: Viewer = { overlay, stage, label: hud.querySelector('.mdw-mermaid-zoom')!, width, height, x: 0, y: 0, scale: 1 };
-  viewer = v;
-  fit(v);
+  const pz: PanZoom = { container, stage, x: 0, y: 0, scale: 1 };
+  overlay = pz;
+  fit(pz);
 
-  hud.addEventListener('click', (e) => {
-    const act = (e.target as HTMLElement).closest<HTMLElement>('[data-v]')?.dataset.v;
-    if (act === 'in') zoomAt(v, 1.25, overlay.clientWidth / 2, overlay.clientHeight / 2);
-    else if (act === 'out') zoomAt(v, 0.8, overlay.clientWidth / 2, overlay.clientHeight / 2);
-    else if (act === 'fit') fit(v);
-    else if (act === 'close') closeViewer();
-  });
-
-  overlay.addEventListener(
-    'wheel',
-    (e) => {
-      e.preventDefault();
-      if (e.ctrlKey || e.metaKey) {
-        zoomAt(v, Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
-      } else {
-        v.x -= e.deltaX;
-        v.y -= e.deltaY;
-        applyTransform(v);
-      }
-    },
-    { passive: false }
-  );
-
-  let drag: { x: number; y: number; px: number; py: number } | undefined;
-  overlay.addEventListener('pointerdown', (e) => {
+  container.addEventListener('dblclick', (e) => {
     if ((e.target as HTMLElement).closest('.mdw-mermaid-hud')) return;
-    drag = { x: v.x, y: v.y, px: e.clientX, py: e.clientY };
-    overlay.setPointerCapture(e.pointerId);
-    overlay.classList.add('dragging');
+    zoomAt(pz, 1.5, e.clientX, e.clientY);
   });
-  overlay.addEventListener('pointermove', (e) => {
-    if (!drag) return;
-    v.x = drag.x + (e.clientX - drag.px);
-    v.y = drag.y + (e.clientY - drag.py);
-    applyTransform(v);
-  });
-  const endDrag = () => {
-    drag = undefined;
-    overlay.classList.remove('dragging');
-  };
-  overlay.addEventListener('pointerup', endDrag);
-  overlay.addEventListener('pointercancel', endDrag);
-  overlay.addEventListener('dblclick', (e) => {
-    if ((e.target as HTMLElement).closest('.mdw-mermaid-hud')) return;
-    zoomAt(v, 1.5, e.clientX, e.clientY);
-  });
-
-  overlay.addEventListener('keydown', (e) => {
-    const cx = overlay.clientWidth / 2;
-    const cy = overlay.clientHeight / 2;
+  container.addEventListener('keydown', (e) => {
+    const rect = container.getBoundingClientRect();
+    const cx = rect.left + container.clientWidth / 2;
+    const cy = rect.top + container.clientHeight / 2;
     if (e.key === 'Escape') closeViewer();
-    else if (e.key === '+' || e.key === '=') zoomAt(v, 1.25, cx, cy);
-    else if (e.key === '-') zoomAt(v, 0.8, cx, cy);
-    else if (e.key === '0') fit(v);
+    else if (e.key === '+' || e.key === '=') zoomAt(pz, 1.25, cx, cy);
+    else if (e.key === '-') zoomAt(pz, 0.8, cx, cy);
+    else if (e.key === '0') fit(pz);
     else if (e.key.startsWith('Arrow')) {
       const step = 40;
-      if (e.key === 'ArrowLeft') v.x += step;
-      if (e.key === 'ArrowRight') v.x -= step;
-      if (e.key === 'ArrowUp') v.y += step;
-      if (e.key === 'ArrowDown') v.y -= step;
-      applyTransform(v);
+      if (e.key === 'ArrowLeft') pz.x += step;
+      if (e.key === 'ArrowRight') pz.x -= step;
+      if (e.key === 'ArrowUp') pz.y += step;
+      if (e.key === 'ArrowDown') pz.y -= step;
+      applyTransform(pz);
     } else return;
     e.preventDefault();
     e.stopPropagation();
   });
-  overlay.focus();
+  container.focus();
 }
 
 function closeViewer(): void {
-  viewer?.overlay.remove();
-  viewer = undefined;
+  overlay?.container.remove();
+  overlay = undefined;
 }
 
-function fit(v: Viewer): void {
+function fit(pz: PanZoom): void {
+  const svg = pz.stage.querySelector<SVGSVGElement>(':scope > svg');
+  if (!svg) return;
+  const { width, height } = svgSize(svg);
   const pad = 48;
-  const w = v.overlay.clientWidth - pad * 2;
-  const h = v.overlay.clientHeight - pad * 2;
-  v.scale = Math.min(w / v.width, h / v.height, 2);
-  v.x = (v.overlay.clientWidth - v.width * v.scale) / 2;
-  v.y = (v.overlay.clientHeight - v.height * v.scale) / 2;
-  applyTransform(v);
+  const w = pz.container.clientWidth - pad * 2;
+  const h = pz.container.clientHeight - pad * 2;
+  pz.scale = Math.min(w / width, h / height, 2);
+  pz.x = (pz.container.clientWidth - width * pz.scale) / 2;
+  pz.y = (pz.container.clientHeight - height * pz.scale) / 2;
+  applyTransform(pz);
 }
 
-function zoomAt(v: Viewer, factor: number, cx: number, cy: number): void {
-  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, v.scale * factor));
-  const k = next / v.scale;
-  v.x = cx - (cx - v.x) * k;
-  v.y = cy - (cy - v.y) * k;
-  v.scale = next;
-  applyTransform(v);
+function reset(pz: PanZoom): void {
+  pz.x = 0;
+  pz.y = 0;
+  pz.scale = 1;
+  applyTransform(pz);
 }
 
-function applyTransform(v: Viewer): void {
-  v.stage.style.transform = `translate(${v.x}px, ${v.y}px) scale(${v.scale})`;
-  v.label.textContent = `${Math.round(v.scale * 100)}%`;
+/** Zooms keeping the point under (cx, cy) (client coords) fixed. */
+function zoomAt(pz: PanZoom, factor: number, cx: number, cy: number): void {
+  const next = Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, pz.scale * factor));
+  const k = next / pz.scale;
+  const rect = pz.container.getBoundingClientRect();
+  // The stage's untransformed layout offset (flex-centred inline, 0 in the overlay).
+  const ox = rect.left + pz.stage.offsetLeft;
+  const oy = rect.top + pz.stage.offsetTop;
+  pz.x = cx - ox - (cx - ox - pz.x) * k;
+  pz.y = cy - oy - (cy - oy - pz.y) * k;
+  pz.scale = next;
+  applyTransform(pz);
+}
+
+function applyTransform(pz: PanZoom): void {
+  const identity = pz !== overlay && pz.scale === 1 && pz.x === 0 && pz.y === 0;
+  pz.stage.style.transform = identity ? '' : `translate(${pz.x}px, ${pz.y}px) scale(${pz.scale})`;
+  pz.container.classList.toggle('zoomed', !identity);
+  const label = pz.container.querySelector<HTMLElement>(':scope > .mdw-mermaid-hud .mdw-mermaid-zoom');
+  if (label) label.textContent = `${Math.round(pz.scale * 100)}%`;
 }
