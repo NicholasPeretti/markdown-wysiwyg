@@ -10,12 +10,14 @@ import * as path from 'path';
 import YAML from 'yaml';
 import {
   compareRecords,
+  compareValues,
   effectiveColumns,
   evaluate,
   fromMatcher,
   parseQuery,
   resolveField,
   type FileRecord,
+  type Query,
 } from './lang';
 import type { CompletionContext } from './complete';
 
@@ -35,8 +37,11 @@ export type Cell =
 
 export interface QueryResult {
   columns: string[];
+  /** `path` is empty for `distinct` rows, which do not stand for a file. */
   rows: { path: string; cells: Cell[] }[];
   total: number;
+  /** Present when the query has `group:`; indexes into `rows`, in display order. */
+  groups?: { value: Cell; rows: number[] }[];
 }
 
 export class FileIndex implements vscode.Disposable {
@@ -221,13 +226,72 @@ export function runQuery(text: string, records: FileRecord[]): QueryResult | { e
   const filtered = records.filter(
     (r) => matches(r.file.path) && query.where.every((e) => evaluate(e, r))
   );
+  if (query.distinct) return runDistinct(query, filtered);
+
   filtered.sort(compareRecords(query));
   const columns = effectiveColumns(query);
-  const rows = filtered.slice(0, query.limit).map((r) => ({
+  const limited = filtered.slice(0, query.limit);
+  const rows = limited.map((r) => ({
     path: r.file.path,
     cells: columns.map((c) => toCell(resolveField(r, c))),
   }));
-  return { columns, rows, total: filtered.length };
+  if (!query.group) return { columns, rows, total: filtered.length };
+
+  // Group the limited rows; a file with an array value lands in every group.
+  const field = query.group;
+  const buckets = new Map<string, { value: unknown; rows: number[] }>();
+  limited.forEach((r, i) => {
+    const raw = resolveField(r, field);
+    const values = Array.isArray(raw) && raw.length ? raw : [raw];
+    for (const v of values) {
+      const k = groupKey(v);
+      let b = buckets.get(k);
+      if (!b) buckets.set(k, (b = { value: v, rows: [] }));
+      b.rows.push(i);
+    }
+  });
+  const dir = query.sort.find((s) => s.field === field)?.dir ?? 'asc';
+  const groups = [...buckets.values()]
+    .sort((a, b) => {
+      const c = compareValues(a.value, b.value);
+      return dir === 'asc' ? c : -c;
+    })
+    .map((b) => ({ value: toCell(b.value), rows: b.rows }));
+  return { columns, rows, total: filtered.length, groups };
+}
+
+function runDistinct(query: Query, filtered: FileRecord[]): QueryResult {
+  const field = query.distinct!;
+  const buckets = new Map<string, { value: unknown; count: number }>();
+  for (const r of filtered) {
+    const raw = resolveField(r, field);
+    const values = Array.isArray(raw) && raw.length ? raw : [raw];
+    for (const v of new Set(values.map((x) => (x instanceof Date ? x.toISOString() : x)))) {
+      const k = groupKey(v);
+      const b = buckets.get(k);
+      if (b) b.count++;
+      else buckets.set(k, { value: v, count: 1 });
+    }
+  }
+  const sort = query.sort[0];
+  const byCount = sort.field === 'count';
+  const list = [...buckets.values()].sort((a, b) => {
+    const c = byCount ? a.count - b.count : compareValues(a.value, b.value);
+    const d = sort.dir === 'asc' ? c : -c;
+    return d !== 0 ? d : compareValues(a.value, b.value);
+  });
+  const rows = list.slice(0, query.limit).map((b) => ({
+    path: '',
+    cells: [toCell(b.value), { kind: 'number', value: b.count } as Cell],
+  }));
+  return { columns: [field, 'count'], rows, total: list.length };
+}
+
+function groupKey(v: unknown): string {
+  if (v === undefined || v === null) return '\u0000null';
+  if (v instanceof Date) return `d:${v.toISOString()}`;
+  if (typeof v === 'object') return `o:${JSON.stringify(v)}`;
+  return `${typeof v}:${String(v)}`;
 }
 
 function toCell(v: unknown): Cell {

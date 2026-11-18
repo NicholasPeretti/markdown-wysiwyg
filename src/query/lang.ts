@@ -13,6 +13,10 @@ export interface Query {
   limit: number;
   columns?: string[];
   page?: number;
+  /** Group rows by this field's value (array values put a file in each group). */
+  group?: string;
+  /** List the distinct values of this field with a file count instead of files. */
+  distinct?: string;
 }
 
 export interface QueryError {
@@ -48,7 +52,7 @@ export type Literal =
   | { kind: 'regex'; source: string; flags: string }
   | { kind: 'date'; ms: number };
 
-export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page'] as const;
+export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page', 'group', 'distinct'] as const;
 export const OPERATORS: CmpOp[] = [
   '==',
   '!=',
@@ -127,6 +131,19 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
         query[key] = n;
         break;
       }
+      case 'group':
+      case 'distinct': {
+        if (!value) {
+          query[key] = undefined;
+          break;
+        }
+        if (!FIELD_RE.test(value)) {
+          errors.push({ line, message: `Expected "${key}: <field>", got "${value}"` });
+          break;
+        }
+        query[key] = value;
+        break;
+      }
       case 'columns': {
         const cols = value
           .split(',')
@@ -148,16 +165,22 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
     }
   });
 
-  if (query.sort.length === 0) query.sort.push({ field: 'file.modified', dir: 'desc' });
+  if (query.group && query.distinct) {
+    errors.push({ line: 0, message: '"group" and "distinct" cannot be combined' });
+  }
+  if (query.sort.length === 0) {
+    query.sort.push(query.distinct ? { field: 'count', dir: 'desc' } : { field: 'file.modified', dir: 'desc' });
+  }
   return { query, errors };
 }
 
 /** Fields the result needs as columns when `columns` is omitted. */
 export function effectiveColumns(query: Query): string[] {
+  if (query.distinct) return [query.distinct, 'count'];
   if (query.columns && query.columns.length > 0) return query.columns;
   const cols = [...DEFAULT_COLUMNS];
   const add = (f: string) => {
-    if (!cols.includes(f)) cols.push(f);
+    if (!cols.includes(f) && f !== query.group) cols.push(f);
   };
   for (const e of query.where) for (const f of fieldsOf(e)) add(f);
   for (const s of query.sort) add(s.field);
@@ -646,7 +669,7 @@ export function compareRecords(query: Query): (a: FileRecord, b: FileRecord) => 
   };
 }
 
-function compareValues(a: unknown, b: unknown): number {
+export function compareValues(a: unknown, b: unknown): number {
   const am = a === undefined || a === null;
   const bm = b === undefined || b === null;
   if (am && bm) return 0;

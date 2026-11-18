@@ -953,6 +953,58 @@ body {
   color: var(--vscode-list-activeSelectionForeground, inherit);
 }
 
+/* Grouped results: a folding header row per group value. */
+.milkdown .ProseMirror .mdw-qt tr.mdw-qt-group-head td {
+  padding: 10px 8px 5px;
+  height: auto;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--vscode-descriptionForeground);
+  border-bottom: 1px solid var(--vscode-panel-border, rgba(128, 128, 128, 0.25));
+  cursor: pointer;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.mdw-qt tbody.mdw-qt-group + tbody.mdw-qt-group tr.mdw-qt-group-head td {
+  padding-top: 18px;
+}
+
+.mdw-qt tr.mdw-qt-group-head:hover td {
+  color: var(--vscode-editor-foreground);
+}
+
+.mdw-qt tr.mdw-qt-group-head:hover {
+  background: transparent;
+}
+
+.mdw-qt-chevron {
+  display: inline-block;
+  width: 0;
+  height: 0;
+  margin: 0 6px 1px 0;
+  border-left: 4px solid transparent;
+  border-right: 4px solid transparent;
+  border-top: 5px solid currentColor;
+  opacity: 0.7;
+  transition: transform 0.12s;
+}
+
+.mdw-qt-folded .mdw-qt-chevron {
+  transform: rotate(-90deg);
+}
+
+.mdw-qt-group-label .mdw-qt-pill {
+  font-size: 12px;
+}
+
+.mdw-qt-group-count {
+  margin-left: 8px;
+  opacity: 0.6;
+  font-weight: 400;
+  font-variant-numeric: tabular-nums;
+}
+
 /* In-place editing: double-click a cell to get an inline input. */
 .mdw-qt td[data-edit] {
   cursor: default;

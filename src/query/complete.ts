@@ -35,6 +35,8 @@ const KEY_DETAIL: { [k: string]: string } = {
   limit: 'max rows',
   columns: 'comma-separated fields',
   page: 'rows per page',
+  group: 'field to group rows by',
+  distinct: 'field whose unique values to list',
 };
 
 const FILE_FIELD_DETAIL: { [k: string]: string } = {
@@ -78,9 +80,15 @@ export function complete(line: string, column: number, ctx: CompletionContext): 
       return { from, items: fields() };
     }
 
+    case 'group':
+    case 'distinct':
+      return { from, items: fields() };
+
     case 'sort': {
       const parts = rest.trimStart().split(/\s+/);
-      if (parts.length <= 1) return { from, items: fields() };
+      if (parts.length <= 1) {
+        return { from, items: [{ label: 'count', kind: 'field', detail: 'files per value (with distinct)' }, ...fields()] };
+      }
       return {
         from,
         items: [

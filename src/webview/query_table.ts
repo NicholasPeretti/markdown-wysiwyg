@@ -32,6 +32,7 @@ interface Result {
   columns: string[];
   rows: { path: string; cells: Cell[] }[];
   total: number;
+  groups?: { value: Cell; rows: number[] }[];
 }
 
 interface BlockState {
@@ -39,6 +40,8 @@ interface BlockState {
   result?: Result;
   error?: string;
   page: number;
+  /** Group labels the user has folded. */
+  collapsed: Set<string>;
   apply: (el: HTMLElement) => void;
 }
 
@@ -73,7 +76,7 @@ export function renderQueryPreview(
   if (language.toLowerCase() !== 'query') return null;
   // Identify the block by its text; identical blocks share state, which is fine.
   const id = blockId(content);
-  const state: BlockState = blocks.get(id) ?? { text: content, page: 0, apply };
+  const state: BlockState = blocks.get(id) ?? { text: content, page: 0, collapsed: new Set(), apply };
   state.apply = apply;
   state.text = content;
   blocks.set(id, state);
@@ -104,6 +107,7 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
         columns: message.columns as string[],
         rows: message.rows as Result['rows'],
         total: message.total as number,
+        groups: message.groups as Result['groups'],
       };
       state.error = undefined;
       // Keep the current page so an edit-triggered refresh does not jump around.
@@ -197,17 +201,19 @@ function render(id: string, state: BlockState): HTMLElement {
   }
   const result = state.result!;
   const { query } = parseQuery(state.text);
-  const pageSize = query.page ?? result.rows.length;
+  const grouped = !!result.groups;
+  const pageSize = grouped ? result.rows.length : (query.page ?? result.rows.length);
   const pageCount = Math.max(1, Math.ceil(result.rows.length / pageSize));
   const page = Math.min(state.page, pageCount - 1);
   const start = page * pageSize;
   const rows = result.rows.slice(start, start + pageSize);
   const sort = query.sort[0];
 
+  const noun = query.distinct ? 'value' : 'file';
   const count =
     result.total > result.rows.length
-      ? `${result.rows.length} of ${result.total} files`
-      : `${result.total} file${result.total === 1 ? '' : 's'}`;
+      ? `${result.rows.length} of ${result.total} ${noun}s`
+      : `${result.total} ${noun}${result.total === 1 ? '' : 's'}`;
   const pager =
     pageCount > 1
       ? `<span class="mdw-qt-pager">
@@ -225,24 +231,43 @@ function render(id: string, state: BlockState): HTMLElement {
     })
     .join('');
 
-  const body = rows.length
-    ? rows
-        .map(
-          (row) =>
-            `<tr data-path="${escapeAttr(row.path)}">${row.cells
-              .map((cell, i) => {
-                const mode = editMode(result.columns[i], cell);
-                const attrs = mode ? ` data-col="${i}" data-edit="${mode}" title="Double-click to edit"` : '';
-                return `<td${attrs}>${renderCell(cell)}</td>`;
-              })
-              .join('')}</tr>`
-        )
-        .join('')
-    : `<tr class="mdw-qt-empty"><td colspan="${result.columns.length}">No files match</td></tr>`;
+  const renderRow = (row: Result['rows'][number]) =>
+    `<tr${row.path ? ` data-path="${escapeAttr(row.path)}"` : ''}>${row.cells
+      .map((cell, i) => {
+        const mode = row.path ? editMode(result.columns[i], cell) : null;
+        const attrs = mode ? ` data-col="${i}" data-edit="${mode}" title="Double-click to edit"` : '';
+        return `<td${attrs}>${renderCell(cell)}</td>`;
+      })
+      .join('')}</tr>`;
+  const empty = `<tbody><tr class="mdw-qt-empty"><td colspan="${result.columns.length}">No files match</td></tr></tbody>`;
+
+  let body: string;
+  if (result.groups) {
+    body = result.groups.length
+      ? result.groups
+          .map((g) => {
+            const label = g.value.kind === 'null' ? `No ${query.group}` : cellText(g.value);
+            const folded = state.collapsed.has(label);
+            return `<tbody class="mdw-qt-group${folded ? ' mdw-qt-folded' : ''}">
+              <tr class="mdw-qt-group-head" data-act="group" data-group="${escapeAttr(label)}">
+                <td colspan="${result.columns.length}">
+                  <span class="mdw-qt-chevron" aria-hidden="true"></span>
+                  <span class="mdw-qt-group-label">${g.value.kind === 'null' ? `<span class="mdw-qt-null">${escapeHtml(label)}</span>` : renderCell(g.value)}</span>
+                  <span class="mdw-qt-group-count">${g.rows.length}</span>
+                </td>
+              </tr>
+              ${folded ? '' : g.rows.map((i) => renderRow(result.rows[i])).join('')}
+            </tbody>`;
+          })
+          .join('')
+      : empty;
+  } else {
+    body = rows.length ? `<tbody>${rows.map(renderRow).join('')}</tbody>` : empty;
+  }
 
   return renderShell(
     id,
-    `<div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead><tbody>${body}</tbody></table></div>
+    `<div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead>${body}</table></div>
     <div class="mdw-qt-footer">
       <span class="mdw-qt-count">${count}</span>
       ${pager}
@@ -499,6 +524,12 @@ function onClick(e: MouseEvent): void {
       case 'copy-query':
         void navigator.clipboard.writeText(state.text);
         break;
+      case 'group': {
+        const label = target.closest<HTMLElement>('[data-group]')!.dataset.group!;
+        if (!state.collapsed.delete(label)) state.collapsed.add(label);
+        replaceContent(root, render(id, state));
+        break;
+      }
       case 'prev':
         state.page = Math.max(0, state.page - 1);
         replaceContent(root, render(id, state));
