@@ -53,7 +53,7 @@ Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`
 
 - **Cmd/Ctrl+click** a row to open the file.
 - **Double-click** a cell to edit it in place: frontmatter fields are rewritten in the target file (comments and formatting preserved; booleans toggle, arrays take `a, b, c`, an empty value removes the field) and `file.name` renames the file. Open files are edited in their buffer and saved unless they already had unsaved changes.
-- The table footer has a ✎ toggle to edit the query and a **⋯** menu (top right of the table, shown on hover) with **Copy as Markdown** (static table of the current result) and **Copy query**.
+- Hovering the table shows a ✎ toggle to edit the query and a **⋯** menu at its top right (they stay visible while you scroll) with **Copy as Markdown** (static table of the current result) and **Copy query**.
 - Results refresh automatically when files change; run **Markdown WYSIWYG: Rebuild Query Index** if they look stale.
 - Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
 
