@@ -162,7 +162,21 @@ async function createEditor(initial: string): Promise<void> {
   document.body.addEventListener('mousedown', focusEnd);
 
   toc = createToc(root, tocVisible);
+
+  // VS Code focuses the webview before the editor exists, so focus lands on
+  // the bare body: typing then goes nowhere and keybindings learned from the
+  // frame never see a useful target. Move focus into the editor.
+  if (document.hasFocus()) focusEditor();
 }
+
+/** Focuses the editor when the frame is focused but nothing inside it is. */
+function focusEditor(): void {
+  const active = document.activeElement;
+  if (!crepe || (active && active !== document.body && active !== document.documentElement)) return;
+  crepe.editor.action((ctx) => ctx.get(editorViewCtx).focus());
+}
+
+window.addEventListener('focus', focusEditor);
 
 window.addEventListener('message', async (event) => {
   const message = event.data;

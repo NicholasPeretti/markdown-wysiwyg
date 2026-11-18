@@ -161,6 +161,8 @@ const codeModeUris = new Set<string>();
 let activeCustomEditorUri: vscode.Uri | undefined;
 /** The most recently focused WYSIWYG webview panel. */
 let activePanel: vscode.WebviewPanel | undefined;
+/** URI whose WYSIWYG editor should take focus once it reports ready. */
+let pendingFocus: string | undefined;
 
 /** Resource of the active tab, regardless of editor type. For diff views, the modified side. */
 function activeTabUri(): vscode.Uri | undefined {
@@ -193,6 +195,7 @@ async function reopenWith(
     );
   };
 
+  if (viewType === VIEW_TYPE) pendingFocus = uri.toString();
   if (group.tabs.some(isSameResource)) {
     await vscode.commands.executeCommand('reopenActiveEditorWith', viewType, uri);
     return;
@@ -259,6 +262,12 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       switch (message.type) {
         case 'ready':
           postContent();
+          // After a toggle from the text editor, VS Code's focus can be left
+          // on the closed editor's DOM; reveal to hand it to the webview.
+          if (pendingFocus === document.uri.toString() && webviewPanel.active) {
+            webviewPanel.reveal(undefined, false);
+          }
+          pendingFocus = undefined;
           break;
         case 'tocVisible':
           this.context.globalState.update('tocVisible', message.value);
