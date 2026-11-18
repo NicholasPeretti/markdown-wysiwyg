@@ -60,6 +60,7 @@ let contextFetchedAt = 0;
 export function installQueryTables(h: Host): void {
   host = h;
   document.addEventListener('click', onClick, true);
+  document.addEventListener('dblclick', onDoubleClick, true);
   document.addEventListener('mousemove', onMouseMove, true);
 }
 
@@ -105,8 +106,12 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
         total: message.total as number,
       };
       state.error = undefined;
-      state.page = 0;
-      state.apply(render(blockIdFor, state));
+      // Keep the current page so an edit-triggered refresh does not jump around.
+      if (editingBlock === blockIdFor) {
+        deferredRender.add(blockIdFor);
+      } else {
+        state.apply(render(blockIdFor, state));
+      }
       return true;
     }
     case 'queryError': {
@@ -224,7 +229,13 @@ function render(id: string, state: BlockState): HTMLElement {
     ? rows
         .map(
           (row) =>
-            `<tr data-path="${escapeAttr(row.path)}">${row.cells.map((cell) => `<td>${renderCell(cell)}</td>`).join('')}</tr>`
+            `<tr data-path="${escapeAttr(row.path)}">${row.cells
+              .map((cell, i) => {
+                const mode = editMode(result.columns[i], cell);
+                const attrs = mode ? ` data-col="${i}" data-edit="${mode}" title="Double-click to edit"` : '';
+                return `<td${attrs}>${renderCell(cell)}</td>`;
+              })
+              .join('')}</tr>`
         )
         .join('')
     : `<tr class="mdw-qt-empty"><td colspan="${result.columns.length}">No files match</td></tr>`;
@@ -304,7 +315,152 @@ function toMarkdown(result: Result, rows: Result['rows']): string {
 }
 
 // ---------------------------------------------------------------------------
-// Interaction (delegated)
+// In-place editing
+
+type EditMode = 'field' | 'rename';
+
+/** Whether a cell can be edited: frontmatter scalars/arrays and `file.name`. */
+function editMode(column: string, cell: Cell): EditMode | null {
+  if (column === 'file.name') return 'rename';
+  if (column.startsWith('file.')) return null;
+  return cell.kind === 'object' ? null : 'field';
+}
+
+/** Block id whose table currently hosts an input; results are held back meanwhile. */
+let editingBlock: string | undefined;
+const deferredRender = new Set<string>();
+
+function onDoubleClick(e: MouseEvent): void {
+  const target = e.target as HTMLElement;
+  const td = target.closest<HTMLElement>('.mdw-qt td[data-edit]');
+  if (!td || td.querySelector('input')) return;
+  const root = td.closest<HTMLElement>('.mdw-qt')!;
+  const state = blocks.get(root.dataset.qid!);
+  const row = td.closest<HTMLElement>('tr[data-path]');
+  if (!state?.result || !row) return;
+  e.preventDefault();
+  e.stopPropagation();
+
+  const col = Number(td.dataset.col);
+  const path = row.dataset.path!;
+  const record = state.result.rows.find((r) => r.path === path);
+  const cell = record?.cells[col];
+  if (!record || !cell) return;
+  const mode = td.dataset.edit as EditMode;
+
+  // Booleans toggle straight away; everything else gets a text input.
+  if (mode === 'field' && cell.kind === 'bool') {
+    commitEdit(root, state, record, col, cell.value ? 'false' : 'true');
+    return;
+  }
+  beginEdit(td, root, state, record, col);
+}
+
+function beginEdit(
+  td: HTMLElement,
+  root: HTMLElement,
+  state: BlockState,
+  record: Result['rows'][number],
+  col: number
+): void {
+  const cell = record.cells[col];
+  const initial = cellText(cell);
+  editingBlock = root.dataset.qid;
+  td.classList.add('mdw-qt-editing-cell');
+  td.innerHTML = '';
+  const input = document.createElement('input');
+  input.className = 'mdw-qt-input';
+  input.type = 'text';
+  input.value = initial;
+  input.spellcheck = false;
+  input.placeholder = cell.kind === 'array' ? 'a, b, c' : cell.kind === 'date' ? 'YYYY-MM-DD' : '';
+  td.appendChild(input);
+
+  let done = false;
+  const finish = (commit: boolean) => {
+    if (done) return;
+    done = true;
+    editingBlock = undefined;
+    const value = input.value;
+    if (commit && value !== initial) {
+      commitEdit(root, state, record, col, value);
+    } else {
+      replaceContent(root, render(root.dataset.qid!, state));
+    }
+    if (deferredRender.delete(root.dataset.qid!)) {
+      state.apply(render(root.dataset.qid!, state));
+    }
+  };
+
+  // Keep ProseMirror/CodeMirror from seeing keystrokes meant for the input.
+  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
+    input.addEventListener(type, (ev) => ev.stopPropagation());
+  }
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      finish(true);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.focus();
+  input.select();
+}
+
+/** Applies `value` optimistically and asks the host to persist it. */
+function commitEdit(
+  root: HTMLElement,
+  state: BlockState,
+  record: Result['rows'][number],
+  col: number,
+  value: string
+): void {
+  const id = root.dataset.qid!;
+  const column = state.result!.columns[col];
+  const previous = record.cells[col];
+  if (column === 'file.name') {
+    const name = value.trim();
+    if (!name) {
+      replaceContent(root, render(id, state));
+      return;
+    }
+    record.cells[col] = { kind: 'string', value: name };
+    host?.post({ type: 'renameFile', path: record.path, value: name });
+  } else {
+    record.cells[col] = optimisticCell(value, previous);
+    host?.post({ type: 'setField', path: record.path, field: column, value, kind: previous.kind });
+  }
+  replaceContent(root, render(id, state));
+}
+
+function optimisticCell(value: string, previous: Cell): Cell {
+  const text = value.trim();
+  if (!text) return { kind: 'null' };
+  switch (previous.kind) {
+    case 'bool':
+      return { kind: 'bool', value: /^(true|yes|on|1|✓|x)$/i.test(text) };
+    case 'number':
+      return Number.isFinite(Number(text)) ? { kind: 'number', value: Number(text) } : { kind: 'string', value: text };
+    case 'array':
+      return { kind: 'array', value: text.replace(/^\[|\]$/g, '').split(',').map((s) => s.trim()).filter(Boolean) };
+    case 'date': {
+      const d = new Date(text);
+      return Number.isNaN(d.getTime()) ? { kind: 'string', value: text } : { kind: 'date', value: d.toISOString() };
+    }
+    case 'url':
+    case 'string':
+      return /^https?:\/\/\S+$/i.test(text) ? { kind: 'url', value: text } : { kind: 'string', value };
+    default: {
+      if (/^-?\d+(\.\d+)?$/.test(text)) return { kind: 'number', value: Number(text) };
+      if (/^(true|false)$/i.test(text)) return { kind: 'bool', value: text.toLowerCase() === 'true' };
+      return { kind: 'string', value: text };
+    }
+  }
+}
+
 
 function onClick(e: MouseEvent): void {
   const target = e.target as HTMLElement;
@@ -352,7 +508,8 @@ function onClick(e: MouseEvent): void {
         if (!state.result) break;
         const { query } = parseQuery(state.text);
         const pageSize = query.page ?? state.result.rows.length;
-        const rows = state.result.rows.slice(state.page * pageSize, (state.page + 1) * pageSize);
+        const page = Math.min(state.page, Math.max(0, Math.ceil(state.result.rows.length / pageSize) - 1));
+        const rows = state.result.rows.slice(page * pageSize, (page + 1) * pageSize);
         void navigator.clipboard.writeText(toMarkdown(state.result, rows));
         break;
       }

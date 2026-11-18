@@ -1,5 +1,6 @@
 import * as vscode from 'vscode';
 import { FileIndex, runQuery } from './query/host';
+import { renameMarkdownFile, setFrontmatterField, type EditKind } from './query/edit';
 import { complete } from './query/complete';
 
 const VIEW_TYPE = 'markdownWysiwyg.editor';
@@ -10,7 +11,7 @@ export function activate(context: vscode.ExtensionContext) {
       VIEW_TYPE,
       new MarkdownWysiwygProvider(context),
       {
-        webviewOptions: { retainContextWhenHidden: true },
+        webviewOptions: { retainContextWhenHidden: true, enableFindWidget: true },
         supportsMultipleEditorsPerDocument: false,
       }
     ),
@@ -281,6 +282,23 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           if (!index) break;
           await index.ensure();
           webviewPanel.webview.postMessage({ type: 'queryContextResult', id: message.id, ...index.completionContext() });
+          break;
+        }
+        case 'setField':
+        case 'renameFile': {
+          const index = indexFor(document.uri);
+          if (!index) break;
+          const target = vscode.Uri.joinPath(index.folder.uri, String(message.path));
+          try {
+            if (message.type === 'setField') {
+              await setFrontmatterField(target, String(message.field), String(message.value), message.kind as EditKind);
+            } else {
+              await renameMarkdownFile(target, String(message.value));
+            }
+          } catch (err) {
+            void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
+            webviewPanel.webview.postMessage({ type: 'queryRefresh' });
+          }
           break;
         }
         case 'edit': {
