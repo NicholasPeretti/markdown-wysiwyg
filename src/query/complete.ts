@@ -34,7 +34,7 @@ const KEY_DETAIL: { [k: string]: string } = {
   sort: 'field asc|desc',
   limit: 'max rows',
   columns: 'comma-separated fields',
-  page: 'rows per page',
+  page_size: 'rows per page (pager in the header)',
   group: 'field to group rows by',
   distinct: 'field whose unique values to list',
 };
@@ -54,7 +54,7 @@ export function complete(line: string, column: number, ctx: CompletionContext): 
   const word = wordMatch ? wordMatch[0] : '';
   const from = column - word.length;
 
-  const keyMatch = /^\s*([A-Za-z]*)(\s*:\s*)?(.*)$/.exec(before);
+  const keyMatch = /^\s*([A-Za-z_]*)(\s*:\s*)?(.*)$/.exec(before);
   if (!keyMatch) return null;
   const [, key, colon, rest] = keyMatch;
 

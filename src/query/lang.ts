@@ -10,8 +10,10 @@ export interface Query {
   from?: string;
   where: Expr[];
   sort: { field: string; dir: SortDir }[];
+  /** Max rows evaluated; `Infinity` when `page_size` is set without an explicit `limit`. */
   limit: number;
   columns?: string[];
+  /** Rows per page in the rendered table (`page_size`, alias `page`). */
   page?: number;
   /** Group rows by this field's value (array values put a file in each group). */
   group?: string;
@@ -54,7 +56,7 @@ export type Literal =
   /** `$.field`: the value of the current file's own frontmatter field. */
   | { kind: 'ref'; field: string };
 
-export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page', 'group', 'distinct'] as const;
+export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page_size', 'group', 'distinct'] as const;
 export const OPERATORS: CmpOp[] = [
   '==',
   '!=',
@@ -87,11 +89,12 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
   const query: Query = { where: [], sort: [], limit: DEFAULT_LIMIT };
   const errors: QueryError[] = [];
   const lines = text.split('\n');
+  let explicitLimit = false;
 
   lines.forEach((raw, line) => {
     const trimmed = raw.trim();
     if (!trimmed || trimmed.startsWith('#')) return;
-    const m = /^([A-Za-z]+)\s*:\s*(.*)$/.exec(trimmed);
+    const m = /^([A-Za-z_]+)\s*:\s*(.*)$/.exec(trimmed);
     if (!m) {
       errors.push({ line, message: `Expected "key: value", got "${trimmed}"` });
       return;
@@ -124,13 +127,19 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
         break;
       }
       case 'limit':
-      case 'page': {
+      case 'page':
+      case 'page_size': {
         const n = Number(value);
         if (!Number.isInteger(n) || n < 1) {
           errors.push({ line, message: `${key} must be a positive integer, got "${value}"` });
           break;
         }
-        query[key] = n;
+        if (key === 'limit') {
+          query.limit = n;
+          explicitLimit = true;
+        } else {
+          query.page = n;
+        }
         break;
       }
       case 'group':
@@ -170,6 +179,9 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
   if (query.group && query.distinct) {
     errors.push({ line: 0, message: '"group" and "distinct" cannot be combined' });
   }
+  // Paging exists to browse everything without a tall table, so a page size
+  // lifts the default cap unless the author limited the query explicitly.
+  if (query.page && !explicitLimit) query.limit = Infinity;
   if (query.sort.length === 0) {
     query.sort.push(query.distinct ? { field: 'count', dir: 'desc' } : { field: 'file.modified', dir: 'desc' });
   }
