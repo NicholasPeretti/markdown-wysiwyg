@@ -19,6 +19,7 @@ import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
 import { handleRelationMessage, installRelationOptions } from './relation_options';
 import { findPlugin, installFind } from './find';
+import { installBlockMenu } from './block_menu';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
   composeDocument,
@@ -209,6 +210,7 @@ installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
 installOverflowWatcher(document.body);
 installMermaidViewer();
 installFind(() => crepe?.editor.ctx);
+installBlockMenu(() => (crepe ? crepe.editor.ctx.get(editorViewCtx) : null));
 installQueryTables({
   post: (message) => vscode.postMessage(message),
   ctx: () => crepe?.editor.ctx,

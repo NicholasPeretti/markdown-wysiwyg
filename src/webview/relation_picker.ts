@@ -5,6 +5,8 @@
  * as pills. Shared by query table cells and the properties panel.
  */
 
+import { isolateInput } from './keys';
+
 export interface PickerOption {
   value: string;
   label: string;
@@ -206,9 +208,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
     }
   };
 
-  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
-    pop.addEventListener(type, (ev) => ev.stopPropagation());
-  }
+  isolateInput(pop);
   filter.addEventListener('input', onInput);
   filter.addEventListener('keydown', onKey);
   if (external) filter.addEventListener('blur', onBlur);

@@ -11,6 +11,7 @@ import { Plugin, PluginKey, TextSelection } from '@milkdown/kit/prose/state';
 import type { EditorState } from '@milkdown/kit/prose/state';
 import { Decoration, DecorationSet, type EditorView } from '@milkdown/kit/prose/view';
 import type { Node as ProseNode } from '@milkdown/kit/prose/model';
+import { isPrimaryMod } from './keys';
 
 interface Match {
   from: number;
@@ -184,7 +185,9 @@ export function installFind(getCtx: () => Ctx | undefined): void {
           e.preventDefault();
           close();
         }
-        e.stopPropagation();
+        // Not stopping propagation here: VS Code reads keybindings from the
+        // trusted keydown on `window`, and nothing in the editor listens to
+        // keys coming from the bar anyway.
       });
       bar.addEventListener('mousedown', (e) => {
         // Keep focus in the input when clicking the bar's chrome.
@@ -229,7 +232,9 @@ export function installFind(getCtx: () => Ctx | undefined): void {
   document.addEventListener(
     'keydown',
     (e) => {
-      const mod = e.metaKey || e.ctrlKey;
+      // Exactly the primary modifier: ⌘⌃F (full screen) and the like belong
+      // to VS Code and must bubble through untouched.
+      const mod = isPrimaryMod(e);
       if (mod && !e.altKey && !e.shiftKey && e.key.toLowerCase() === 'f') {
         e.preventDefault();
         e.stopPropagation();

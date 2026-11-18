@@ -20,6 +20,7 @@ import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, usesSelf, withSort, typ
 import type { Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
 import { fetchOptions } from './relation_options';
+import { isolateInput } from './keys';
 
 export type Cell =
   | { kind: 'null' }
@@ -601,9 +602,7 @@ function beginArrayAdd({ root, state, td, record, col, cell }: CellContext): voi
     else replaceContent(root, render(id, state));
     if (deferredRender.delete(id)) state.apply(render(id, state));
   };
-  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
-    input.addEventListener(type, (ev) => ev.stopPropagation());
-  }
+  isolateInput(input);
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();
@@ -654,9 +653,7 @@ function beginEdit(
   };
 
   // Keep ProseMirror/CodeMirror from seeing keystrokes meant for the input.
-  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
-    input.addEventListener(type, (ev) => ev.stopPropagation());
-  }
+  isolateInput(input);
   input.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter') {
       ev.preventDefault();

@@ -5,6 +5,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 ## Features
 
 - **WYSIWYG mode** — Notion-style editing with a `/` slash menu, drag handles, tables, code blocks, task lists, and more (Milkdown Crepe).
+- **Block menu** — click the ⠿ grip of a block's drag handle to *turn it into* text, a heading, a bullet/numbered/task list, a quote or code, or to delete the whole block. Converting a single list item splits the list around it; from the first item the whole list is converted.
 - **Code mode** — the normal VS Code markdown text editor.
 - **One-click switching** — toolbar icons in the editor title bar, or the command palette:
   - `Markdown: Open in WYSIWYG Mode`
