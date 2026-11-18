@@ -206,7 +206,10 @@ window.addEventListener('message', async (event) => {
 });
 
 installRelationOptions((message) => vscode.postMessage(message));
-installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
+installLinkHandler(
+  (href) => vscode.postMessage({ type: 'openLink', href }),
+  (direction) => vscode.postMessage({ type: 'navigate', direction })
+);
 installOverflowWatcher(document.body);
 installMermaidViewer();
 installFind(() => crepe?.editor.ctx);

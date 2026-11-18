@@ -266,6 +266,11 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
         case 'openLink':
           await openLink(String(message.href), document.uri);
           break;
+        case 'navigate':
+          await vscode.commands.executeCommand(
+            message.direction === 'forward' ? 'workbench.action.navigateForward' : 'workbench.action.navigateBack'
+          );
+          break;
         case 'openFile': {
           const index = indexFor(document.uri);
           if (index) {

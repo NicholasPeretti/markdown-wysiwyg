@@ -51,7 +51,7 @@ function urlFromFrontmatterTarget(target: Element, e: MouseEvent): string | null
   return hit ? urlAt(hit.text, hit.offset) : null;
 }
 
-export function installLinkHandler(open: (href: string) => void): void {
+export function installLinkHandler(open: (href: string) => void, navigate: (direction: 'back' | 'forward') => void): void {
   document.addEventListener(
     'click',
     (e) => {
@@ -80,6 +80,21 @@ export function installLinkHandler(open: (href: string) => void): void {
     },
     true
   );
+
+  // Mouse back/forward buttons: VS Code handles them on its own window, but
+  // events inside the webview never get there, so relay them as commands.
+  for (const type of ['mousedown', 'mouseup', 'auxclick'] as const) {
+    window.addEventListener(
+      type,
+      (e: MouseEvent) => {
+        if (e.button !== 3 && e.button !== 4) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (type === 'mousedown') navigate(e.button === 3 ? 'back' : 'forward');
+      },
+      true
+    );
+  }
 
   const setMod = (on: boolean) => document.body.classList.toggle('mdw-mod', on);
   window.addEventListener('keydown', (e) => isModifier(e) && setMod(true));
