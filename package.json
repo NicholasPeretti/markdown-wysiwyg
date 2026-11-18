@@ -109,6 +109,7 @@
   "dependencies": {
     "@codemirror/autocomplete": "^6.20.4",
     "@codemirror/language": "^6.13.1",
+    "@mermaid-js/layout-elk": "^1.0.2",
     "@milkdown/crepe": "^7.5.0",
     "@milkdown/kit": "^7.5.0",
     "gemoji": "^8.1.0",

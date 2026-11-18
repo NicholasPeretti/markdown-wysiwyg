@@ -13,7 +13,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **Callouts** — GitHub-style alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) render as colored callouts. Insert one from the `/` menu, or click a callout's title to change its kind.
 - **Subscript / superscript** — `H<sub>2</sub>O`, `x<sup>2</sup>` render inline; type the tags to create them, cursor inside reveals them.
 - **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
-- **Mermaid diagrams** — ```` ```mermaid ```` blocks render as diagrams (insert with `/diagram`); toggle back to the source with the code block's preview button. Hover a diagram for zoom controls (−/+/Reset, or ⌘-scroll; drag to pan when zoomed) and ⛶ to open it full screen (`+`/`-` zoom, `0` fit, `Esc` close).
+- **Mermaid diagrams** — ```` ```mermaid ```` blocks render as diagrams (insert with `/diagram`) spanning the full editor width, never scaled below 75% for readability (pan instead); toggle back to the source with the code block's preview button. Hover a diagram for zoom controls (−/+/Reset, or ⌘-scroll; drag to pan when zoomed) and ⛶ to open it full screen (`+`/`-` zoom, `0` fit, `Esc` close).
 - **Query tables** — Notion-style live tables of workspace files. A ```` ```query ```` fenced block (insert with `/query`) renders as a table; see [Query tables](#query-tables) below.
 - Matches your VS Code color theme.
 

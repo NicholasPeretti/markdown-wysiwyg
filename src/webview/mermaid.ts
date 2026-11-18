@@ -47,6 +47,8 @@ function configure(mermaid: Mermaid): void {
     fontFamily: cssVar('--vscode-font-family') || 'inherit',
     themeVariables: {
       fontFamily: cssVar('--vscode-font-family') || 'inherit',
+      // Edge labels sit on the editor background rather than in grey boxes.
+      edgeLabelBackground: cssVar('--vscode-editor-background') || undefined,
     },
   });
 }
@@ -87,7 +89,10 @@ async function draw(text: string, apply: Apply): Promise<void> {
     const mermaid = await load();
     configure(mermaid);
     const { svg } = await mermaid.render(id, text);
-    const html = `<div class="mdw-mermaid"><div class="mdw-mermaid-stage">${svg}</div><div class="mdw-mermaid-hud">${HUD_HTML(false)}</div></div>`;
+    // Natural size drives the CSS size limits (see .mdw-mermaid-stage svg rules).
+    const vb = /viewBox="[\d.\-]+ [\d.\-]+ ([\d.]+) ([\d.]+)"/.exec(svg);
+    const size = vb ? ` style="--mdw-nat-w: ${vb[1]}px; --mdw-nat-h: ${vb[2]}px"` : '';
+    const html = `<div class="mdw-mermaid"${size}><div class="mdw-mermaid-stage">${svg}</div><div class="mdw-mermaid-hud">${HUD_HTML(false)}</div></div>`;
     if (cache.size >= CACHE_LIMIT) cache.delete(cache.keys().next().value as string);
     cache.set(text, html);
     apply(html);
@@ -200,7 +205,8 @@ export function installMermaidViewer(): void {
       if (e.ctrlKey || e.metaKey) {
         e.preventDefault();
         zoomAt(pz, Math.exp(-e.deltaY * 0.01), e.clientX, e.clientY);
-      } else if (full || pz.scale !== 1) {
+      } else if (full || pz.scale !== 1 || overflows(pz)) {
+        if (!full && pz.scale === 1 && Math.abs(e.deltaX) < Math.abs(e.deltaY)) return; // vertical wheel scrolls the page
         e.preventDefault();
         pz.x -= e.deltaX;
         pz.y -= e.deltaY;
@@ -216,7 +222,7 @@ export function installMermaidViewer(): void {
     (e) => {
       if (e.button !== 0 || (e.target as HTMLElement).closest('.mdw-mermaid-hud')) return;
       const pz = panZoomFor(e.target);
-      if (!pz || (pz !== overlay && pz.scale === 1)) return;
+      if (!pz || (pz !== overlay && pz.scale === 1 && !overflows(pz))) return;
       e.preventDefault();
       drag = { pz, x: pz.x, y: pz.y, px: e.clientX, py: e.clientY };
       pz.container.setPointerCapture(e.pointerId);
@@ -236,6 +242,11 @@ export function installMermaidViewer(): void {
   };
   document.addEventListener('pointerup', endDrag);
   document.addEventListener('pointercancel', endDrag);
+}
+
+/** True when the inline diagram is wider than its box (readability floor kicked in). */
+function overflows(pz: PanZoom): boolean {
+  return pz.stage.scrollWidth > pz.container.clientWidth + 1 || pz.stage.scrollHeight > pz.container.clientHeight + 1;
 }
 
 function svgSize(svg: SVGSVGElement): { width: number; height: number } {
@@ -337,7 +348,7 @@ function zoomAt(pz: PanZoom, factor: number, cx: number, cy: number): void {
 function applyTransform(pz: PanZoom): void {
   const identity = pz !== overlay && pz.scale === 1 && pz.x === 0 && pz.y === 0;
   pz.stage.style.transform = identity ? '' : `translate(${pz.x}px, ${pz.y}px) scale(${pz.scale})`;
-  pz.container.classList.toggle('zoomed', !identity);
+  pz.container.classList.toggle('zoomed', !identity || overflows(pz));
   const label = pz.container.querySelector<HTMLElement>(':scope > .mdw-mermaid-hud .mdw-mermaid-zoom');
   if (label) label.textContent = `${Math.round(pz.scale * 100)}%`;
 }
