@@ -17,6 +17,7 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { complete, type CompletionContext } from '../query/complete';
 import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, withSort, type SortDir } from '../query/lang';
+import { openRelationPicker, type PickerOption } from './relation_picker';
 
 export type Cell =
   | { kind: 'null' }
@@ -26,7 +27,8 @@ export type Cell =
   | { kind: 'bool'; value: boolean }
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
-  | { kind: 'object'; value: string };
+  | { kind: 'object'; value: string }
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; single: boolean };
 
 interface Result {
   columns: string[];
@@ -141,6 +143,13 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
     case 'queryRefresh':
       refreshQueryTables();
       return true;
+    case 'relationOptionsResult': {
+      const req = relationRequests.get(message.id as string);
+      relationRequests.delete(message.id as string);
+      const relation = message.relation as { folder: string; single: boolean; options: PickerOption[] } | null;
+      if (req && relation && req.td.isConnected) openRelationEditor(req, relation);
+      return true;
+    }
   }
   return false;
 }
@@ -295,6 +304,15 @@ function renderCell(cell: Cell): string {
       return cell.value.map((v) => `<span class="mdw-qt-pill">${escapeHtml(v)}</span>`).join('');
     case 'object':
       return `<code>${escapeHtml(cell.value)}</code>`;
+    case 'relation':
+      if (!cell.items.length) return '<span class="mdw-qt-null">—</span>';
+      return cell.items
+        .map((it) =>
+          it.path
+            ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.label ?? it.value)}</span>`
+            : `<span class="mdw-qt-pill mdw-qt-rel mdw-qt-rel-missing" title="No such option">${escapeHtml(it.value)}</span>`
+        )
+        .join('');
   }
 }
 
@@ -308,6 +326,8 @@ function cellText(cell: Cell): string {
       return cell.value.slice(0, 10);
     case 'array':
       return cell.value.join(', ');
+    case 'relation':
+      return cell.items.map((i) => i.label ?? i.value).join(', ');
     default:
       return String(cell.value);
   }
@@ -341,13 +361,64 @@ function toMarkdown(result: Result, rows: Result['rows']): string {
 // ---------------------------------------------------------------------------
 // In-place editing
 
-type EditMode = 'field' | 'rename';
+type EditMode = 'field' | 'rename' | 'relation';
 
 /** Whether a cell can be edited: frontmatter scalars/arrays and `file.name`. */
 function editMode(column: string, cell: Cell): EditMode | null {
   if (column === 'file.name') return 'rename';
   if (column.startsWith('file.')) return null;
+  if (cell.kind === 'relation') return 'relation';
   return cell.kind === 'object' ? null : 'field';
+}
+
+/** Pending `relationOptions` requests: request id → where to open the picker. */
+const relationRequests = new Map<
+  string,
+  { td: HTMLElement; root: HTMLElement; state: BlockState; record: Result['rows'][number]; col: number }
+>();
+
+function openRelationEditor(
+  req: { td: HTMLElement; root: HTMLElement; state: BlockState; record: Result['rows'][number]; col: number },
+  relation: { folder: string; single: boolean; options: PickerOption[] }
+): void {
+  const { td, root, state, record, col } = req;
+  const cell = record.cells[col];
+  if (cell.kind !== 'relation') return;
+  const field = state.result!.columns[col];
+  const id = root.dataset.qid!;
+  editingBlock = id;
+  td.classList.add('mdw-qt-editing-cell');
+  openRelationPicker({
+    anchor: td,
+    options: relation.options,
+    selected: cell.items.map((i) => i.value),
+    single: relation.single,
+    onClose: (values, created, changed) => {
+      editingBlock = undefined;
+      td.classList.remove('mdw-qt-editing-cell');
+      if (changed) {
+        record.cells[col] = {
+          kind: 'relation',
+          single: relation.single,
+          items: values.map((v) => {
+            const o = relation.options.find((o) => o.value === v);
+            return { value: v, path: o?.path || undefined, label: o && o.label !== v ? o.label : undefined };
+          }),
+        };
+        host?.post({
+          type: 'setRelation',
+          path: record.path,
+          field,
+          values,
+          single: relation.single,
+          create: created,
+          folder: relation.folder,
+        });
+      }
+      replaceContent(root, render(id, state));
+      if (deferredRender.delete(id)) state.apply(render(id, state));
+    },
+  });
 }
 
 /** Block id whose table currently hosts an input; results are held back meanwhile. */
@@ -372,6 +443,12 @@ function onDoubleClick(e: MouseEvent): void {
   if (!record || !cell) return;
   const mode = td.dataset.edit as EditMode;
 
+  if (mode === 'relation') {
+    const reqId = `r${++seq}`;
+    relationRequests.set(reqId, { td, root, state, record, col });
+    host?.post({ type: 'relationOptions', id: reqId, path, field: state.result.columns[col] });
+    return;
+  }
   // Booleans toggle straight away; everything else gets a text input.
   if (mode === 'field' && cell.kind === 'bool') {
     commitEdit(root, state, record, col, cell.value ? 'false' : 'true');
@@ -559,9 +636,16 @@ function onClick(e: MouseEvent): void {
     return;
   }
 
-  // cmd/ctrl+click a row opens the file. Links inside cells go through the
-  // regular link handler.
+  // cmd/ctrl+click a row opens the file (a relation pill opens its target).
+  // Links inside cells go through the regular link handler.
   if (target.closest('a[href]')) return;
+  const pill = target.closest<HTMLElement>('[data-rel-path]');
+  if (pill && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    e.stopPropagation();
+    host?.post({ type: 'openFile', path: pill.dataset.relPath });
+    return;
+  }
   const row = target.closest<HTMLElement>('tr[data-path]');
   if (row && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();

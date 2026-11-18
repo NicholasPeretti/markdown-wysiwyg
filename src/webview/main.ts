@@ -21,6 +21,7 @@ import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
   composeDocument,
   createFrontmatterPanel,
+  type PanelRelation,
   splitFrontmatter,
   type FrontmatterPanel,
 } from './frontmatter';
@@ -74,7 +75,11 @@ async function createEditor(initial: string): Promise<void> {
   const fmHost = document.createElement('div');
   fmHost.id = 'frontmatter-host';
   root.before(fmHost);
-  frontmatterPanel = createFrontmatterPanel(fmHost, sendEdit);
+  frontmatterPanel = createFrontmatterPanel(fmHost, sendEdit, {
+    openFile: (path) => vscode.postMessage({ type: 'openFile', path }),
+    createOption: (folder, name) => vscode.postMessage({ type: 'createOption', folder, name }),
+  });
+  if (pendingRelations) frontmatterPanel.setRelations(pendingRelations);
   frontmatterPanel.set(fm);
 
   crepe = new Crepe({
@@ -151,9 +156,17 @@ async function createEditor(initial: string): Promise<void> {
   toc = createToc(root, tocVisible);
 }
 
+/** Relations received before the editor (and its panel) existed. */
+let pendingRelations: Record<string, PanelRelation> | undefined;
+
 window.addEventListener('message', async (event) => {
   const message = event.data;
   if (message && handleQueryMessage(message)) {
+    return;
+  }
+  if (message?.type === 'relations') {
+    pendingRelations = message.relations;
+    frontmatterPanel?.setRelations(message.relations);
     return;
   }
   if (message?.type === 'toggleToc') {

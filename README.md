@@ -16,6 +16,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
 - **Mermaid diagrams** — ```` ```mermaid ```` blocks render as diagrams (insert with `/diagram`); flowcharts are shown in whichever orientation (LR/TD) fits the page better — add a `%% keep-direction` comment to opt out; toggle back to the source with the code block's preview button. Hover a diagram for zoom controls (−/+/Reset, or ⌘-scroll; drag to pan when zoomed) and ⛶ to open it full screen (`+`/`-` zoom, `0` fit, `Esc` close).
 - **Query tables** — Notion-style live tables of workspace files. A ```` ```query ```` fenced block (insert with `/query`) renders as a table; see [Query tables](#query-tables) below.
+- **Relations** — Notion-style relation fields whose options are the files of another folder (great for tags, people, projects). Declare them once in a folder's `index.md`; see [Relations](#relations) below.
 - Matches your VS Code color theme.
 
 ## Usage
@@ -58,6 +59,24 @@ Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`
 - Hovering the table shows a ✎ toggle to edit the query and a **⋯** menu at its top right (they stay visible while you scroll) with **Copy as Markdown** (static table of the current result) and **Copy query**.
 - Results refresh automatically when files change; run **Markdown WYSIWYG: Rebuild Query Index** if they look stale.
 - Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
+
+## Relations
+
+A folder's `index.md` (or `README.md`) can declare which frontmatter fields are **relations** — fields whose values are the files of another folder, like a Notion relation property. The declaration applies to every file in that folder and its subfolders (a deeper `index.md` can override it):
+
+```yaml
+---
+relations:
+  tags: tags                              # multi-value, options = files in tags/
+  owner: { from: ./people, single: true } # single-value; ./ is relative to this folder
+---
+```
+
+Stored values are the option files' names (`tags: [kubernetes, oncall]`), so files stay plain markdown. Option labels come from the option file's `title` frontmatter when present.
+
+- **Properties panel** — relation fields show as pills with a picker (search, toggle, `Create "x"` for new options, which writes `folder/x.md`). Cmd/Ctrl+click a pill opens the option file.
+- **Query tables** — relation cells render as pills; double-click opens the same picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file.
+- A value with no matching file shows as a dashed pill.
 
 ## Development
 

@@ -8,10 +8,26 @@
  */
 import YAML from 'yaml';
 import { isUrl } from './links';
+import { openRelationPicker, type PickerOption } from './relation_picker';
+
+export interface PanelRelation {
+  folder: string;
+  single: boolean;
+  options: PickerOption[];
+}
+
+export interface PanelHooks {
+  /** Open another markdown file (relative to the index root). */
+  openFile?(path: string): void;
+  /** Create a new option file in a relation folder. */
+  createOption?(folder: string, name: string): void;
+}
 
 export interface FrontmatterPanel {
   get(): string | null;
   set(value: string | null): void;
+  /** Relations declared for this document's folder (field → target). */
+  setRelations(relations: Record<string, PanelRelation>): void;
 }
 
 type Entry = [key: string, value: unknown];
@@ -58,12 +74,14 @@ function coerceScalar(text: string): unknown {
 
 export function createFrontmatterPanel(
   container: HTMLElement,
-  onChange: () => void
+  onChange: () => void,
+  hooks: PanelHooks = {}
 ): FrontmatterPanel {
   /** Raw YAML (without ---) as written to the file; null = no frontmatter. */
   let raw: string | null = null;
   let entries: Entry[] | null = null;
   let rawMode = false;
+  let relations: Record<string, PanelRelation> = {};
 
   const addButton = document.createElement('button');
   addButton.className = 'mdw-fm-add';
@@ -183,16 +201,27 @@ export function createFrontmatterPanel(
       render();
     });
 
-    row.append(icon, keyInput, renderValue(current, value, index), del);
+    const relation = relations[key];
+    if (relation) icon.textContent = '↗';
+    row.append(icon, keyInput, renderValue(current, value, index, relation), del);
     return row;
   };
 
-  const renderValue = (current: Entry[], value: unknown, index: number): HTMLElement => {
+  const renderValue = (
+    current: Entry[],
+    value: unknown,
+    index: number,
+    relation?: PanelRelation
+  ): HTMLElement => {
     const setValue = (next: unknown) => {
       const nextEntries = [...current] as Entry[];
       nextEntries[index] = [nextEntries[index][0], next];
       commit(nextEntries);
     };
+
+    if (relation) {
+      return renderRelation(value, relation, setValue);
+    }
 
     if (typeof value === 'boolean') {
       const checkbox = document.createElement('input');
@@ -274,6 +303,65 @@ export function createFrontmatterPanel(
     return host;
   };
 
+  const renderRelation = (
+    value: unknown,
+    relation: PanelRelation,
+    setValue: (next: unknown) => void
+  ): HTMLElement => {
+    const values = (Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value]).map(
+      String
+    );
+    const host = document.createElement('div');
+    host.className = 'mdw-fm-value mdw-fm-pills mdw-fm-relation';
+
+    values.forEach((v, i) => {
+      const option = relation.options.find((o) => o.value === v);
+      const pill = document.createElement('span');
+      pill.className = 'mdw-fm-pill mdw-fm-rel';
+      if (!option) pill.classList.add('mdw-fm-rel-missing');
+      pill.title = option ? '⌘-click to open' : 'No such option';
+      const text = document.createElement('span');
+      text.textContent = option?.label ?? v;
+      text.addEventListener('click', (e) => {
+        if ((e.metaKey || e.ctrlKey) && option) {
+          e.preventDefault();
+          e.stopPropagation();
+          hooks.openFile?.(option.path);
+        }
+      });
+      const x = document.createElement('button');
+      x.className = 'mdw-fm-pill-x';
+      x.textContent = '✕';
+      x.addEventListener('click', () => {
+        const next = values.filter((_, j) => j !== i);
+        setValue(relation.single ? next[0] ?? null : next);
+        render();
+      });
+      pill.append(text, x);
+      host.appendChild(pill);
+    });
+
+    const add = document.createElement('button');
+    add.className = 'mdw-fm-pill-input mdw-fm-rel-add';
+    add.textContent = values.length ? '+' : 'Select…';
+    add.addEventListener('click', () => {
+      openRelationPicker({
+        anchor: host,
+        options: relation.options,
+        selected: values,
+        single: relation.single,
+        onClose: (next, created, changed) => {
+          if (!changed) return;
+          for (const name of created) hooks.createOption?.(relation.folder, name);
+          setValue(relation.single ? next[0] ?? null : next);
+          render();
+        },
+      });
+    });
+    host.appendChild(add);
+    return host;
+  };
+
   modeButton.addEventListener('click', () => {
     rawMode = !rawMode;
     render();
@@ -300,6 +388,10 @@ export function createFrontmatterPanel(
         raw = next;
         render();
       }
+    },
+    setRelations: (next) => {
+      relations = next;
+      render();
     },
   };
 }

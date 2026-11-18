@@ -44,6 +44,23 @@ export async function setFrontmatterField(
   }
 }
 
+/** Sets `field` to an already-typed `value` (`undefined` removes it). */
+export async function setFrontmatterValue(uri: vscode.Uri, field: string, value: unknown): Promise<void> {
+  const document = await vscode.workspace.openTextDocument(uri);
+  const wasDirty = document.isDirty;
+  const eol = document.eol === vscode.EndOfLine.CRLF ? '\r\n' : '\n';
+  const change = rewriteFrontmatterValue(document.getText(), field, value, eol);
+  if (!change) return;
+  const edit = new vscode.WorkspaceEdit();
+  edit.replace(uri, new vscode.Range(document.positionAt(change.start), document.positionAt(change.end)), change.text);
+  if (!(await vscode.workspace.applyEdit(edit))) {
+    throw new Error('Could not apply the edit');
+  }
+  if (!wasDirty) {
+    await document.save();
+  }
+}
+
 export interface FrontmatterChange {
   start: number;
   end: number;
@@ -61,6 +78,15 @@ export function rewriteFrontmatter(
   kind: EditKind,
   eol = '\n'
 ): FrontmatterChange | null {
+  return rewriteFrontmatterValue(text, field, coerce(raw, kind), eol);
+}
+
+export function rewriteFrontmatterValue(
+  text: string,
+  field: string,
+  value: unknown,
+  eol = '\n'
+): FrontmatterChange | null {
   const match = FRONTMATTER_RE.exec(text);
   const yamlText = match?.[1] ?? '';
 
@@ -73,7 +99,6 @@ export function rewriteFrontmatter(
   }
 
   const keyPath = field.split('.');
-  const value = coerce(raw, kind);
   if (value === undefined) {
     if (!doc.hasIn(keyPath)) return null;
     doc.deleteIn(keyPath);

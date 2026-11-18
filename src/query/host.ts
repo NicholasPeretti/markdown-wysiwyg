@@ -20,6 +20,7 @@ import {
   type Query,
 } from './lang';
 import type { CompletionContext } from './complete';
+import { labelFor, relationsFor, targetPath, type Relation, type RelationSource } from './relations';
 
 /** Bytes read from the head of a file to find its frontmatter. */
 const HEAD_BYTES = 4096;
@@ -33,7 +34,8 @@ export type Cell =
   | { kind: 'bool'; value: boolean }
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
-  | { kind: 'object'; value: string };
+  | { kind: 'object'; value: string }
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; single: boolean };
 
 export interface QueryResult {
   columns: string[];
@@ -82,6 +84,10 @@ export class FileIndex implements vscode.Disposable {
 
   records(): FileRecord[] {
     return [...this.entries.values()];
+  }
+
+  record(relPath: string): FileRecord | undefined {
+    return this.entries.get(relPath);
   }
 
   completionContext(): CompletionContext {
@@ -217,7 +223,11 @@ function parseYaml(text: string): { [k: string]: unknown } {
 
 // ---------------------------------------------------------------------------
 
-export function runQuery(text: string, records: FileRecord[]): QueryResult | { error: string } {
+export function runQuery(
+  text: string,
+  records: FileRecord[],
+  source?: RelationSource
+): QueryResult | { error: string } {
   const { query, errors } = parseQuery(text);
   if (errors.length) {
     return { error: errors.map((e) => `Line ${e.line + 1}: ${e.message}`).join('\n') };
@@ -231,10 +241,17 @@ export function runQuery(text: string, records: FileRecord[]): QueryResult | { e
   filtered.sort(compareRecords(query));
   const columns = effectiveColumns(query);
   const limited = filtered.slice(0, query.limit);
-  const rows = limited.map((r) => ({
-    path: r.file.path,
-    cells: columns.map((c) => toCell(resolveField(r, c))),
-  }));
+  const rows = limited.map((r) => {
+    const rels = source ? relationsFor(source, r.file.path) : undefined;
+    return {
+      path: r.file.path,
+      cells: columns.map((c) => {
+        const rel = rels?.get(c);
+        const v = resolveField(r, c);
+        return rel && source ? relationCell(source, rel, v) : toCell(v);
+      }),
+    };
+  });
   if (!query.group) return { columns, rows, total: filtered.length };
 
   // Group the limited rows; a file with an array value lands in every group.
@@ -292,6 +309,22 @@ function groupKey(v: unknown): string {
   if (v instanceof Date) return `d:${v.toISOString()}`;
   if (typeof v === 'object') return `o:${JSON.stringify(v)}`;
   return `${typeof v}:${String(v)}`;
+}
+
+function relationCell(source: RelationSource, rel: Relation, v: unknown): Cell {
+  if (v === undefined || v === null) return { kind: 'relation', items: [], single: rel.single };
+  const values = Array.isArray(v) ? v : [v];
+  return {
+    kind: 'relation',
+    single: rel.single,
+    items: values
+      .filter((x) => x !== null && x !== undefined && typeof x !== 'object')
+      .map((x) => {
+        const path = targetPath(source, rel, String(x));
+        const label = path ? labelFor(source, path) : undefined;
+        return { value: String(x), path, ...(label && label !== String(x) ? { label } : {}) };
+      }),
+  };
 }
 
 function toCell(v: unknown): Cell {
