@@ -62,7 +62,7 @@ where: tags includes $.name
 ```
 
 - **Cmd/Ctrl+click** a row to open the file.
-- **Double-click** a cell to edit it in place: frontmatter fields are rewritten in the target file (comments and formatting preserved; booleans toggle, arrays take `a, b, c`, an empty value removes the field) and `file.name` renames the file. Open files are edited in their buffer and saved unless they already had unsaved changes.
+- Cells are editable in place and the target file's frontmatter is rewritten (comments and formatting preserved). Booleans are checkboxes; lists are pills with a hover ✕ and a `+` to add; relations are pills/dropdowns opening the option picker. Empty cells take the shape of their column so a value can be added. **Double-click** text, number and date cells to type (an empty value removes the field; `file.name` renames the file). Open files are edited in their buffer and saved unless they already had unsaved changes.
 - Hovering the table shows a ✎ toggle to edit the query and a **⋯** menu at its top right (they stay visible while you scroll) with **Copy as Markdown** (static table of the current result) and **Copy query**.
 - Results refresh automatically when files change; run **Markdown WYSIWYG: Rebuild Query Index** if they look stale.
 - Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
@@ -96,7 +96,7 @@ Declarations are managed from the collapsed **Relations** section at the bottom 
 Declared fields appear in the properties panel even when the file doesn't have them yet; the first value you pick adds the field. Option labels use the option file's `title` when present.
 
 - **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown of the existing options. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
-- **Query tables** — relation cells render as pills; double-click opens the picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
+- **Query tables** — `multi` relations are pills with a `+` that opens the picker; single ones are a dropdown. Changes write the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
 
 Since relations are plain frontmatter, put them in your templates so every new file gets them. The option file can list its users with a `$.field` query, e.g. `where: tags includes $.name` in `tags/urgent.md`.
 

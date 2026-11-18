@@ -117,12 +117,12 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
       if (!blockIdFor) return true;
       const state = blocks.get(blockIdFor);
       if (!state) return true;
-      state.result = {
+      state.result = normalizeColumns({
         columns: message.columns as string[],
         rows: message.rows as Result['rows'],
         total: message.total as number,
         groups: message.groups as Result['groups'],
-      };
+      });
       state.error = undefined;
       // Keep the current page so an edit-triggered refresh does not jump around.
       if (editingBlock === blockIdFor) {
@@ -249,8 +249,9 @@ function render(id: string, state: BlockState): HTMLElement {
     `<tr${row.path ? ` data-path="${escapeAttr(row.path)}"` : ''}>${row.cells
       .map((cell, i) => {
         const mode = row.path ? editMode(result.columns[i], cell) : null;
-        const attrs = mode ? ` data-col="${i}" data-edit="${mode}" title="Double-click to edit"` : '';
-        return `<td${attrs}>${renderCell(cell)}</td>`;
+        const hint = mode === 'field' || mode === 'rename' ? ' title="Double-click to edit"' : '';
+        const attrs = mode ? ` data-col="${i}" data-edit="${mode}"${hint}` : '';
+        return `<td${attrs}>${mode ? renderEditableCell(cell, mode) : renderCell(cell)}</td>`;
       })
       .join('')}</tr>`;
   const empty = `<tbody><tr class="mdw-qt-empty"><td colspan="${result.columns.length}">No files match</td></tr></tbody>`;
@@ -321,6 +322,81 @@ function renderCell(cell: Cell): string {
   }
 }
 
+/**
+ * Gives empty cells the shape of their column (checkbox, pills, relation) when
+ * every non-empty cell in it agrees, so a value can be added in place.
+ */
+function normalizeColumns(result: Result): Result {
+  result.columns.forEach((column, i) => {
+    if (column.startsWith('file.')) return;
+    let shape: Cell | undefined;
+    for (const row of result.rows) {
+      const c = row.cells[i];
+      if (c.kind === 'null') continue;
+      if (c.kind !== 'bool' && c.kind !== 'array' && c.kind !== 'relation') return;
+      if (shape && shape.kind !== c.kind) return;
+      shape = shape ?? c;
+    }
+    if (!shape) return;
+    for (const row of result.rows) {
+      if (row.cells[i].kind !== 'null' || !row.path) continue;
+      row.cells[i] =
+        shape.kind === 'bool'
+          ? { kind: 'bool', value: false }
+          : shape.kind === 'array'
+            ? { kind: 'array', value: [] }
+            : { kind: 'relation', items: [], relation: (shape as Extract<Cell, { kind: 'relation' }>).relation };
+    }
+  });
+  return result;
+}
+
+/** Cells of editable rows get controls: checkboxes, removable pills, dropdown-like relations. */
+function renderEditableCell(cell: Cell, mode: EditMode): string {
+  switch (mode) {
+    case 'bool': {
+      const checked = cell.kind === 'bool' && cell.value;
+      return `<label class="mdw-qt-check-host" data-act="toggle"><input type="checkbox" class="mdw-qt-check" ${checked ? 'checked' : ''} aria-label="Toggle"></label>`;
+    }
+    case 'array': {
+      const values = cell.kind === 'array' ? cell.value : [];
+      return `<span class="mdw-qt-pills">${values
+        .map((v, i) => removablePill(escapeHtml(v), 'arr-remove', i))
+        .join('')}${addButton('arr-add')}</span>`;
+    }
+    case 'relation': {
+      if (cell.kind !== 'relation') return renderCell(cell);
+      if (!cell.relation.multi) {
+        const it = cell.items[0];
+        const inner = it
+          ? `<span class="mdw-qt-sel-text${it.path ? '' : ' mdw-qt-rel-missing'}"${it.path ? ` data-rel-path="${escapeAttr(it.path)}"` : ''}>${escapeHtml(it.label ?? it.value)}</span>`
+          : '<span class="mdw-qt-null">—</span>';
+        return `<span class="mdw-qt-select" data-act="rel-pick" title="Click to change">${inner}<span class="mdw-qt-sel-chevron" aria-hidden="true">▾</span></span>`;
+      }
+      return `<span class="mdw-qt-pills">${cell.items
+        .map((it, i) =>
+          removablePill(
+            escapeHtml(it.label ?? it.value),
+            'rel-remove',
+            i,
+            it.path ? `mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}` : 'mdw-qt-rel mdw-qt-rel-missing'
+          )
+        )
+        .join('')}${addButton('rel-pick')}</span>`;
+    }
+    default:
+      return renderCell(cell);
+  }
+}
+
+function removablePill(html: string, act: string, index: number, extraClass = ''): string {
+  return `<span class="mdw-qt-pill mdw-qt-pill-rm ${extraClass}"><span>${html}</span><button class="mdw-qt-pill-x" data-act="${act}" data-idx="${index}" title="Remove" aria-label="Remove">✕</button></span>`;
+}
+
+function addButton(act: string): string {
+  return `<button class="mdw-qt-pill-add" data-act="${act}" title="Add" aria-label="Add">+</button>`;
+}
+
 function cellText(cell: Cell): string {
   switch (cell.kind) {
     case 'null':
@@ -366,14 +442,38 @@ function toMarkdown(result: Result, rows: Result['rows']): string {
 // ---------------------------------------------------------------------------
 // In-place editing
 
-type EditMode = 'field' | 'rename' | 'relation';
+type EditMode = 'field' | 'rename' | 'relation' | 'bool' | 'array';
 
 /** Whether a cell can be edited: frontmatter scalars/arrays and `file.name`. */
 function editMode(column: string, cell: Cell): EditMode | null {
   if (column === 'file.name') return 'rename';
   if (column.startsWith('file.')) return null;
   if (cell.kind === 'relation') return 'relation';
+  if (cell.kind === 'bool') return 'bool';
+  if (cell.kind === 'array') return 'array';
   return cell.kind === 'object' ? null : 'field';
+}
+
+interface CellContext {
+  root: HTMLElement;
+  state: BlockState;
+  td: HTMLElement;
+  record: Result['rows'][number];
+  col: number;
+  cell: Cell;
+}
+
+function cellContext(target: HTMLElement): CellContext | undefined {
+  const td = target.closest<HTMLElement>('.mdw-qt td[data-edit]');
+  if (!td) return undefined;
+  const root = td.closest<HTMLElement>('.mdw-qt')!;
+  const state = blocks.get(root.dataset.qid!);
+  const row = td.closest<HTMLElement>('tr[data-path]');
+  if (!state?.result || !row) return undefined;
+  const col = Number(td.dataset.col);
+  const record = state.result.rows.find((r) => r.path === row.dataset.path);
+  const cell = record?.cells[col];
+  return record && cell ? { root, state, td, record, col, cell } : undefined;
 }
 
 function openRelationEditor(
@@ -421,35 +521,100 @@ let editingBlock: string | undefined;
 const deferredRender = new Set<string>();
 
 function onDoubleClick(e: MouseEvent): void {
-  const target = e.target as HTMLElement;
-  const td = target.closest<HTMLElement>('.mdw-qt td[data-edit]');
-  if (!td || td.querySelector('input')) return;
-  const root = td.closest<HTMLElement>('.mdw-qt')!;
-  const state = blocks.get(root.dataset.qid!);
-  const row = td.closest<HTMLElement>('tr[data-path]');
-  if (!state?.result || !row) return;
+  const ctx = cellContext(e.target as HTMLElement);
+  if (!ctx || ctx.td.querySelector('input:not([type=checkbox])')) return;
+  const mode = ctx.td.dataset.edit as EditMode;
+  // Booleans, lists and relations have their own single-click controls.
+  if (mode !== 'field' && mode !== 'rename') return;
   e.preventDefault();
   e.stopPropagation();
+  beginEdit(ctx.td, ctx.root, ctx.state, ctx.record, ctx.col);
+}
 
-  const col = Number(td.dataset.col);
-  const path = row.dataset.path!;
-  const record = state.result.rows.find((r) => r.path === path);
-  const cell = record?.cells[col];
-  if (!record || !cell) return;
-  const mode = td.dataset.edit as EditMode;
+/** Single-click controls inside editable cells. Returns false when `act` is not a cell action. */
+function cellAction(act: string, target: HTMLElement): boolean {
+  const ctx = cellContext(target);
+  if (!ctx) return false;
+  const { root, state, td, record, col, cell } = ctx;
+  const idx = Number(target.closest<HTMLElement>('[data-idx]')?.dataset.idx ?? -1);
+  switch (act) {
+    case 'toggle':
+      commitEdit(root, state, record, col, cell.kind === 'bool' && cell.value ? 'false' : 'true');
+      return true;
+    case 'arr-remove': {
+      if (cell.kind !== 'array') return true;
+      const rest = cell.value.filter((_, i) => i !== idx);
+      commitEdit(root, state, record, col, rest.length ? rest.join(', ') : '[]');
+      return true;
+    }
+    case 'arr-add':
+      beginArrayAdd(ctx);
+      return true;
+    case 'rel-remove': {
+      if (cell.kind !== 'relation') return true;
+      const values = cell.items.filter((_, i) => i !== idx).map((i) => i.value);
+      record.cells[col] = { ...cell, items: cell.items.filter((_, i) => i !== idx) };
+      host?.post({
+        type: 'setRelation',
+        path: record.path,
+        field: state.result!.columns[col],
+        values,
+        relation: cell.relation,
+        create: [],
+      });
+      replaceContent(root, render(root.dataset.qid!, state));
+      return true;
+    }
+    case 'rel-pick': {
+      if (cell.kind !== 'relation' || editingBlock) return true;
+      void fetchOptions(cell.relation).then((options) => {
+        if (td.isConnected) openRelationEditor(td, root, state, record, col, options);
+      });
+      return true;
+    }
+  }
+  return false;
+}
 
-  if (mode === 'relation' && cell.kind === 'relation') {
-    void fetchOptions(cell.relation).then((options) => {
-      if (td.isConnected) openRelationEditor(td, root, state, record, col, options);
-    });
-    return;
+/** Appends an input to a list cell; Enter adds one value. */
+function beginArrayAdd({ root, state, td, record, col, cell }: CellContext): void {
+  const values = cell.kind === 'array' ? cell.value : [];
+  const pills = td.querySelector<HTMLElement>('.mdw-qt-pills');
+  if (!pills || pills.querySelector('input')) return;
+  const id = root.dataset.qid!;
+  editingBlock = id;
+  td.classList.add('mdw-qt-editing-cell');
+  pills.querySelector('.mdw-qt-pill-add')?.remove();
+  const input = document.createElement('input');
+  input.className = 'mdw-qt-pill-input';
+  input.placeholder = 'Add…';
+  input.spellcheck = false;
+  pills.appendChild(input);
+
+  let done = false;
+  const finish = (commit: boolean) => {
+    if (done) return;
+    done = true;
+    editingBlock = undefined;
+    const value = input.value.trim();
+    if (commit && value) commitEdit(root, state, record, col, [...values, value].join(', '));
+    else replaceContent(root, render(id, state));
+    if (deferredRender.delete(id)) state.apply(render(id, state));
+  };
+  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
+    input.addEventListener(type, (ev) => ev.stopPropagation());
   }
-  // Booleans toggle straight away; everything else gets a text input.
-  if (mode === 'field' && cell.kind === 'bool') {
-    commitEdit(root, state, record, col, cell.value ? 'false' : 'true');
-    return;
-  }
-  beginEdit(td, root, state, record, col);
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      finish(true);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      finish(false);
+    }
+  });
+  input.addEventListener('blur', () => finish(true));
+  input.focus();
 }
 
 function beginEdit(
@@ -569,11 +734,21 @@ function onClick(e: MouseEvent): void {
   const state = blocks.get(id);
   if (!state) return;
 
+  // cmd/ctrl+click a relation pill opens its target, even inside a control.
+  const pill = target.closest<HTMLElement>('[data-rel-path]');
+  if (pill && (e.metaKey || e.ctrlKey)) {
+    e.preventDefault();
+    e.stopPropagation();
+    host?.post({ type: 'openFile', path: pill.dataset.relPath });
+    return;
+  }
+
   const action = target.closest<HTMLElement>('[data-act]')?.dataset.act;
   if (action) {
     e.preventDefault();
     e.stopPropagation();
     if (action !== 'menu') closeMenus();
+    if (cellAction(action, target)) return;
     switch (action) {
       case 'menu': {
         const menu = target.closest<HTMLElement>('.mdw-qt-menu')!;
@@ -631,16 +806,9 @@ function onClick(e: MouseEvent): void {
     return;
   }
 
-  // cmd/ctrl+click a row opens the file (a relation pill opens its target).
-  // Links inside cells go through the regular link handler.
+  // cmd/ctrl+click a row opens the file. Links inside cells go through the
+  // regular link handler.
   if (target.closest('a[href]')) return;
-  const pill = target.closest<HTMLElement>('[data-rel-path]');
-  if (pill && (e.metaKey || e.ctrlKey)) {
-    e.preventDefault();
-    e.stopPropagation();
-    host?.post({ type: 'openFile', path: pill.dataset.relPath });
-    return;
-  }
   const row = target.closest<HTMLElement>('tr[data-path]');
   if (row && (e.metaKey || e.ctrlKey)) {
     e.preventDefault();

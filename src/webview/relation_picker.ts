@@ -52,7 +52,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
     ? '<div class="mdw-rel-list"></div>'
     : `<div class="mdw-rel-head">
       <span class="mdw-rel-selected"></span>
-      <input class="mdw-rel-filter" type="text" placeholder="Search or create…" spellcheck="false" />
+      <input class="mdw-rel-filter" type="text" placeholder="${cfg.multi ? 'Search or create…' : 'Search…'}" spellcheck="false" />
     </div>
     <div class="mdw-rel-list"></div>`;
   document.body.appendChild(pop);
@@ -96,7 +96,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
     );
     rows = matching.map((option) => ({ kind: 'option', option }));
     const exact = cfg.options.some((o) => o.value.toLowerCase() === q || o.label.toLowerCase() === q);
-    if (q && !exact) {
+    if (q && !exact && cfg.multi) {
       rows.push({ kind: 'create', name: filter.value.trim() });
     }
     highlight = Math.max(0, Math.min(highlight, rows.length - 1));
