@@ -838,10 +838,11 @@ body {
   position: sticky;
   top: 0;
   z-index: 3;
-  height: 0;
   display: flex;
   align-items: flex-start;
-  justify-content: flex-end;
+  justify-content: space-between;
+  padding-bottom: 4px;
+  background: var(--vscode-editor-background);
   pointer-events: none;
 }
 
@@ -869,13 +870,11 @@ body {
   padding: 0 2px;
   border-radius: 5px;
   background: var(--vscode-editor-background);
-  box-shadow: 0 0 0 4px var(--vscode-editor-background);
 }
 
 .mdw-qt:hover .mdw-qt-actions,
 .mdw-qt-editing .mdw-qt-actions,
-.mdw-qt-actions:has(.mdw-qt-menu.open),
-.mdw-qt-actions:has(.mdw-qt-filter.open) {
+.mdw-qt-actions:has(.mdw-qt-menu.open) {
   opacity: 1;
 }
 
@@ -983,50 +982,36 @@ body {
   gap: 4px;
 }
 
-/* Toolbar filter: a magnifier that expands into a text box. */
+/* Toolbar filter: always visible at the top left, quiet until focused. */
 .mdw-qt-filter {
+  pointer-events: auto;
   display: inline-flex;
   align-items: center;
-  gap: 2px;
+  gap: 6px;
   min-width: 0;
+  padding: 0 6px;
+  height: 23px;
+  margin: 5px 0 0 2px;
+  border-radius: 5px;
+  color: var(--vscode-descriptionForeground);
 }
 
-.mdw-qt-filter > button {
-  display: inline-flex;
-  align-items: center;
+.mdw-qt-filter:focus-within {
+  background: var(--vscode-input-background, var(--vscode-list-hoverBackground));
+  box-shadow: 0 0 0 1px var(--vscode-focusBorder, rgba(128, 128, 128, 0.6));
 }
 
-/* The filter is for results; hide it while the query source is shown. */
-.mdw-qt-editing .mdw-qt-filter {
-  display: none;
+.mdw-qt-filter svg {
+  flex: none;
 }
 
 .mdw-qt-filter input {
   all: unset;
   box-sizing: border-box;
-  width: 0;
-  padding: 0;
-  opacity: 0;
+  width: 180px;
   font: inherit;
-  color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
-  background: var(--vscode-input-background, transparent);
-  border: 1px solid var(--vscode-input-border, var(--vscode-panel-border, rgba(128, 128, 128, 0.35)));
-  border-radius: 4px;
-  transition:
-    width 0.15s ease,
-    opacity 0.15s;
-}
-
-.mdw-qt-filter.open input {
-  width: 160px;
-  height: 19px;
-  padding: 0 6px;
   font-size: 12px;
-  opacity: 1;
-}
-
-.mdw-qt-filter input:focus {
-  border-color: var(--vscode-focusBorder, rgba(128, 128, 128, 0.6));
+  color: var(--vscode-input-foreground, var(--vscode-editor-foreground));
 }
 
 .mdw-qt-filter input::placeholder {
@@ -1034,13 +1019,18 @@ body {
 }
 
 .mdw-qt-filter [data-act='clear-filter'] {
-  display: none;
+  visibility: hidden;
   font-size: 14px;
   line-height: 1;
 }
 
-.mdw-qt-filter.open:has(input:not(:placeholder-shown)) [data-act='clear-filter'] {
-  display: inline-flex;
+.mdw-qt-filter:has(input:not(:placeholder-shown)) [data-act='clear-filter'] {
+  visibility: visible;
+}
+
+/* The filter is for results; hide it while the query source is shown. */
+.mdw-qt-editing .mdw-qt-filter {
+  display: none;
 }
 
 /* Table: horizontal dividers only, full width, muted header. */
@@ -2137,16 +2127,4 @@ body {
 
 .mdw-block-menu-danger {
   color: var(--vscode-editorError-foreground, #f85149);
-}
-
-/* With the filter open the toolbar becomes a real row above the table so
-   the text box does not cover the last column header. */
-.mdw-qt:not(.mdw-qt-editing *):has(.mdw-qt-filter.open) .mdw-qt-toolbar {
-  height: auto;
-  padding-bottom: 4px;
-  background: var(--vscode-editor-background);
-}
-
-.mdw-qt:has(.mdw-qt-filter.open) .mdw-qt-toolbar .mdw-qt-actions {
-  box-shadow: none;
 }

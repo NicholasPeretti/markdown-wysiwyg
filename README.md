@@ -64,8 +64,8 @@ where: tags includes $.name
 
 - **Cmd/Ctrl+click** a row to open the file.
 - Cells are editable in place and the target file's frontmatter is rewritten (comments and formatting preserved). Booleans are checkboxes; lists are pills with a hover ✕ and a `+` to add; relations are pills/dropdowns opening the option picker. Empty cells take the shape of their column so a value can be added. **Double-click** text, number and date cells to type (an empty value removes the field; `file.name` renames the file). Open files are edited in their buffer and saved unless they already had unsaved changes.
-- Hovering the table shows a ✎ toggle to edit the query and a **⋯** menu at its top right (they stay visible while you scroll) with **Copy as Markdown** (static table of the current result) and **Copy query**.
-- The 🔍 next to them opens a filter box: rows are narrowed to those whose visible cells contain every typed word (case-insensitive; groups shrink accordingly, the pager and count follow). The filter is never written to the file; `Esc` clears it, then closes the box.
+- A toolbar above the header (it stays visible while you scroll) holds a **Filter rows…** box at the left and, on hover, a ✎ toggle to edit the query plus a **⋯** menu at the right with **Copy as Markdown** (static table of the current result) and **Copy query**.
+- Filtering keeps the rows whose visible cells contain every typed word (case-insensitive; groups shrink accordingly, the pager and count follow). The filter is never written to the file; `Esc` clears it.
 - Results refresh automatically when files change — including folders moved or deleted by other tools — and the index is re-checked against the file system before each query and whenever the window or panel regains focus. **Markdown WYSIWYG: Rebuild Query Index** forces a full rebuild.
 - Completions for keys, fields, operators and known values appear while editing the query, both in the WYSIWYG block and in the text editor.
 

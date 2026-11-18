@@ -193,8 +193,7 @@ function blockId(text: string): string {
 const EDIT_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>';
 
-const menuHtml = (filter: string) => `<span class="mdw-qt-actions">
-  ${filter}
+const menuHtml = (filter: string) => `${filter}<span class="mdw-qt-actions">
   <button data-act="edit" class="mdw-qt-edit" title="Edit query" aria-pressed="false">${EDIT_ICON}</button>
   <span class="mdw-qt-menu">
     <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
@@ -246,11 +245,11 @@ function render(id: string, state: BlockState): HTMLElement {
           <button data-act="next" ${page >= pageCount - 1 ? 'disabled' : ''} title="Next page">›</button>
         </span>`
       : '';
-  const filter = `<span class="mdw-qt-filter${state.search ? ' open' : ''}">
-      <button data-act="filter" title="Filter rows">${FILTER_ICON}</button>
+  const filter = `<label class="mdw-qt-filter">
+      ${FILTER_ICON}
       <input type="text" placeholder="Filter rows…" spellcheck="false" value="${escapeAttr(state.search)}" aria-label="Filter rows">
       <button data-act="clear-filter" title="Clear filter">×</button>
-    </span>`;
+    </label>`;
 
   const head = result.columns
     .map((c) => {
@@ -826,23 +825,10 @@ function onClick(e: MouseEvent): void {
         state.page += 1;
         replaceContent(root, render(id, state));
         break;
-      case 'filter': {
-        const box = target.closest<HTMLElement>('.mdw-qt-filter')!;
-        const input = box.querySelector<HTMLInputElement>('input')!;
-        if (box.classList.toggle('open')) {
-          input.focus();
-        } else if (state.search) {
-          state.search = '';
-          state.page = 0;
-          replaceContent(root, render(id, state));
-        }
-        break;
-      }
       case 'clear-filter':
         state.search = '';
         state.page = 0;
         replaceContent(root, render(id, state));
-        root.querySelector<HTMLElement>('.mdw-qt-filter')?.classList.add('open');
         root.querySelector<HTMLInputElement>('.mdw-qt-filter input')?.focus();
         break;
       case 'copy': {
@@ -923,10 +909,8 @@ function onFilterKeydown(e: KeyboardEvent): void {
     state.search = '';
     state.page = 0;
     replaceContent(hit.root, render(hit.id, state));
-    hit.root.querySelector<HTMLElement>('.mdw-qt-filter')?.classList.add('open');
     hit.root.querySelector<HTMLInputElement>('.mdw-qt-filter input')?.focus();
   } else {
-    hit.input.closest('.mdw-qt-filter')?.classList.remove('open');
     hit.input.blur();
   }
 }
@@ -948,11 +932,9 @@ function replaceContent(root: HTMLElement, fresh: HTMLElement): void {
   // Keep the caret in the filter box across the re-render it triggers.
   const active = document.activeElement as HTMLInputElement | null;
   const typing = !!active && active.matches('.mdw-qt-filter input') && root.contains(active);
-  const open = !!root.querySelector('.mdw-qt-filter.open');
   const sel = typing ? [active.selectionStart ?? 0, active.selectionEnd ?? 0] : null;
   root.innerHTML = fresh.innerHTML;
   const box = root.querySelector<HTMLElement>('.mdw-qt-filter');
-  if (box && open) box.classList.add('open');
   if (typing && box) {
     const input = box.querySelector<HTMLInputElement>('input')!;
     input.focus({ preventScroll: true });
