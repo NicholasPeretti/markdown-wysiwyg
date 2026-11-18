@@ -79,6 +79,8 @@ export function createFrontmatterPanel(
   let relations = new Map<string, Relation>();
   /** Field currently being edited, so option refreshes don't yank the input. */
   let editingField: string | undefined;
+  /** Whether the relations ("schema") section is expanded; collapsed by default. */
+  let schemaOpen = false;
 
   onRelationOptionsChanged(() => {
     if (editingField === undefined && raw !== null && !rawMode) render();
@@ -156,7 +158,7 @@ export function createFrontmatterPanel(
     rows.className = 'mdw-fm-rows';
 
     current.forEach((entry, index) => {
-      rows.appendChild(renderRow(current, entry, index));
+      if (entry[0] !== RELATIONS_KEY) rows.appendChild(renderRow(current, entry, index));
     });
     // Declared relation fields the file has no value for yet.
     for (const field of relations.keys()) {
@@ -176,17 +178,8 @@ export function createFrontmatterPanel(
         .item(current.length)
         ?.focus();
     });
-    const actions = document.createElement('div');
-    actions.className = 'mdw-fm-actions';
-    actions.appendChild(addProp);
-    if (!current.some(([k]) => k === RELATIONS_KEY)) {
-      const addRel = document.createElement('button');
-      addRel.className = 'mdw-fm-add-prop';
-      addRel.textContent = '+ Add relation';
-      addRel.addEventListener('click', () => openRelationForm(current));
-      actions.appendChild(addRel);
-    }
-    rows.appendChild(actions);
+    rows.appendChild(addProp);
+    rows.appendChild(renderSchemaSection(current));
     return rows;
   };
 
@@ -221,7 +214,6 @@ export function createFrontmatterPanel(
 
     const relation = relations.get(key);
     if (relation) icon.textContent = relation.multi ? '⊞' : '▾';
-    if (key === RELATIONS_KEY) icon.textContent = '↔';
     if (index < 0) {
       // Implicit row from `relations:`; it gets a real entry once a value is set.
       keyInput.disabled = true;
@@ -273,10 +265,6 @@ export function createFrontmatterPanel(
 
     if (Array.isArray(value)) {
       return renderPills(value, setValue);
-    }
-
-    if (index >= 0 && current[index][0] === RELATIONS_KEY) {
-      return renderSchema(current);
     }
 
     if (value !== null && typeof value === 'object') {
@@ -498,9 +486,28 @@ export function createFrontmatterPanel(
     render();
   };
 
+  /** Collapsible "Relations" footer; the `$relations` entry never shows as a row. */
+  const renderSchemaSection = (current: Entry[]): HTMLElement => {
+    const section = document.createElement('div');
+    section.className = 'mdw-fm-schema-section';
+    const toggle = document.createElement('button');
+    toggle.className = 'mdw-fm-schema-toggle';
+    toggle.setAttribute('aria-expanded', String(schemaOpen));
+    toggle.innerHTML = `<span class="mdw-fm-chevron">${schemaOpen ? '▾' : '▸'}</span> Relations${
+      relations.size ? ` <span class="mdw-fm-schema-count">${relations.size}</span>` : ''
+    }`;
+    toggle.addEventListener('click', () => {
+      schemaOpen = !schemaOpen;
+      render();
+    });
+    section.appendChild(toggle);
+    if (schemaOpen) section.appendChild(renderSchema(current));
+    return section;
+  };
+
   const renderSchema = (current: Entry[]): HTMLElement => {
     const host = document.createElement('div');
-    host.className = 'mdw-fm-value mdw-fm-pills mdw-fm-schema';
+    host.className = 'mdw-fm-pills mdw-fm-schema';
     for (const [field, r] of relations) {
       const el = pill(`${field} → ${r.folder || '.'}${r.field ? `.${r.field}` : ''}${r.multi ? ' ⊞' : ''}`, '', () => {
         const next = new Map(relations);
@@ -523,6 +530,7 @@ export function createFrontmatterPanel(
   /** Inline form (below the rows) to add or edit one relation declaration. */
   const openRelationForm = (current: Entry[], editField?: string) => {
     body.querySelector('.mdw-fm-relform')?.remove();
+    schemaOpen = true;
     const existing = editField ? relations.get(editField) : undefined;
     const form = document.createElement('div');
     form.className = 'mdw-fm-relform';
@@ -561,7 +569,7 @@ export function createFrontmatterPanel(
         save();
       } else if (e.key === 'Escape') form.remove();
     });
-    body.appendChild(form);
+    (body.querySelector('.mdw-fm-schema-section') ?? body).appendChild(form);
     q(editField ? 'from' : 'field').focus();
   };
 

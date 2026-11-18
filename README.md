@@ -78,7 +78,7 @@ $relations:
 ---
 ```
 
-You can also manage declarations from the properties panel: **+ Add relation** (or the `+` in the `$relations` row) opens a small form; click a declaration to edit it, ✕ to remove it.
+Declarations are managed from the collapsed **Relations** section at the bottom of the properties panel (not shown as a regular property): `+` opens a small form, click a declaration to edit it, ✕ removes it.
 
 | Key | Meaning |
 | --- | --- |

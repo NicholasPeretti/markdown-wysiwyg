@@ -622,9 +622,42 @@ body {
   opacity: 1;
 }
 
-.mdw-fm-actions {
-  display: flex;
-  gap: 8px;
+.mdw-fm-schema-section {
+  margin-top: 6px;
+  padding-top: 4px;
+  border-top: 1px solid var(--vscode-widget-border, rgba(128, 128, 128, 0.2));
+}
+.mdw-fm-schema-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-family: var(--vscode-font-family, sans-serif);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vscode-descriptionForeground);
+  padding: 4px;
+  opacity: 0.7;
+}
+.mdw-fm-schema-toggle:hover {
+  opacity: 1;
+}
+.mdw-fm-chevron {
+  width: 10px;
+  font-size: 10px;
+}
+.mdw-fm-schema-count {
+  background: var(--vscode-badge-background);
+  color: var(--vscode-badge-foreground);
+  border-radius: 8px;
+  padding: 0 6px;
+  font-size: 10px;
+  line-height: 15px;
+  text-transform: none;
+  letter-spacing: 0;
 }
 
 .mdw-fm-add-prop {
@@ -1611,6 +1644,11 @@ body {
 }
 .mdw-fm-schema {
   cursor: default;
+  margin-left: 22px;
+}
+.mdw-fm-schema:hover,
+.mdw-fm-schema:focus-within {
+  background: none;
 }
 .mdw-fm-schema-pill {
   background: transparent;
