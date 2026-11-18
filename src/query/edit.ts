@@ -5,6 +5,7 @@
  */
 
 import * as vscode from 'vscode';
+import type { Relation } from './relations';
 import * as path from 'path';
 import YAML from 'yaml';
 
@@ -174,4 +175,24 @@ function scalar(text: string): unknown {
   } catch {
     return text;
   }
+}
+
+/** Creates `folder/<name>.md` for a new option unless one already exists. */
+export async function createOption(root: vscode.Uri, rel: Relation, name: string): Promise<void> {
+  const value = name.trim();
+  const safe = value.replace(/[\\/:*?"<>|]/g, '-');
+  if (!safe) throw new Error('Option name cannot be empty');
+  const uri = vscode.Uri.joinPath(root, `${rel.folder ? `${rel.folder}/` : ''}${safe}.md`);
+  try {
+    await vscode.workspace.fs.stat(uri);
+    return;
+  } catch {
+    // create below
+  }
+  const body = rel.field ? `---\n${rel.field}: ${yamlScalar(value)}\n---\n` : `# ${value}\n`;
+  await vscode.workspace.fs.writeFile(uri, Buffer.from(body, 'utf8'));
+}
+
+function yamlScalar(s: string): string {
+  return /^[A-Za-z0-9_][A-Za-z0-9_ -]*$/.test(s) && !/^(true|false|null|yes|no)$/i.test(s) ? s : JSON.stringify(s);
 }

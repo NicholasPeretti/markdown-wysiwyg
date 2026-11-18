@@ -17,7 +17,9 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { complete, type CompletionContext } from '../query/complete';
 import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, withSort, type SortDir } from '../query/lang';
+import type { Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
+import { fetchOptions } from './relation_options';
 
 export type Cell =
   | { kind: 'null' }
@@ -28,7 +30,7 @@ export type Cell =
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
   | { kind: 'object'; value: string }
-  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; single: boolean };
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation };
 
 interface Result {
   columns: string[];
@@ -143,13 +145,6 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
     case 'queryRefresh':
       refreshQueryTables();
       return true;
-    case 'relationOptionsResult': {
-      const req = relationRequests.get(message.id as string);
-      relationRequests.delete(message.id as string);
-      const relation = message.relation as { folder: string; single: boolean; options: PickerOption[] } | null;
-      if (req && relation && req.td.isConnected) openRelationEditor(req, relation);
-      return true;
-    }
   }
   return false;
 }
@@ -371,49 +366,39 @@ function editMode(column: string, cell: Cell): EditMode | null {
   return cell.kind === 'object' ? null : 'field';
 }
 
-/** Pending `relationOptions` requests: request id → where to open the picker. */
-const relationRequests = new Map<
-  string,
-  { td: HTMLElement; root: HTMLElement; state: BlockState; record: Result['rows'][number]; col: number }
->();
-
 function openRelationEditor(
-  req: { td: HTMLElement; root: HTMLElement; state: BlockState; record: Result['rows'][number]; col: number },
-  relation: { folder: string; single: boolean; options: PickerOption[] }
+  td: HTMLElement,
+  root: HTMLElement,
+  state: BlockState,
+  record: Result['rows'][number],
+  col: number,
+  options: PickerOption[]
 ): void {
-  const { td, root, state, record, col } = req;
   const cell = record.cells[col];
   if (cell.kind !== 'relation') return;
+  const rel = cell.relation;
   const field = state.result!.columns[col];
   const id = root.dataset.qid!;
   editingBlock = id;
   td.classList.add('mdw-qt-editing-cell');
   openRelationPicker({
     anchor: td,
-    options: relation.options,
+    options,
     selected: cell.items.map((i) => i.value),
-    single: relation.single,
+    multi: rel.multi,
     onClose: (values, created, changed) => {
       editingBlock = undefined;
       td.classList.remove('mdw-qt-editing-cell');
       if (changed) {
         record.cells[col] = {
           kind: 'relation',
-          single: relation.single,
+          relation: rel,
           items: values.map((v) => {
-            const o = relation.options.find((o) => o.value === v);
+            const o = options.find((o) => o.value === v);
             return { value: v, path: o?.path || undefined, label: o && o.label !== v ? o.label : undefined };
           }),
         };
-        host?.post({
-          type: 'setRelation',
-          path: record.path,
-          field,
-          values,
-          single: relation.single,
-          create: created,
-          folder: relation.folder,
-        });
+        host?.post({ type: 'setRelation', path: record.path, field, values, relation: rel, create: created });
       }
       replaceContent(root, render(id, state));
       if (deferredRender.delete(id)) state.apply(render(id, state));
@@ -443,10 +428,10 @@ function onDoubleClick(e: MouseEvent): void {
   if (!record || !cell) return;
   const mode = td.dataset.edit as EditMode;
 
-  if (mode === 'relation') {
-    const reqId = `r${++seq}`;
-    relationRequests.set(reqId, { td, root, state, record, col });
-    host?.post({ type: 'relationOptions', id: reqId, path, field: state.result.columns[col] });
+  if (mode === 'relation' && cell.kind === 'relation') {
+    void fetchOptions(cell.relation).then((options) => {
+      if (td.isConnected) openRelationEditor(td, root, state, record, col, options);
+    });
     return;
   }
   // Booleans toggle straight away; everything else gets a text input.

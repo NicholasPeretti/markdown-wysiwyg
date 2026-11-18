@@ -1549,16 +1549,47 @@ body {
   opacity: 0.6;
   border-style: dashed;
 }
-.mdw-fm-rel-add {
-  cursor: pointer;
-  color: var(--vscode-descriptionForeground);
-  background: none;
-  border: none;
-  font: inherit;
+.mdw-fm-schema {
+  line-height: 26px;
   padding: 0 4px;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--vscode-descriptionForeground);
+  font-family: inherit;
 }
-.mdw-fm-rel-add:hover {
-  color: var(--vscode-foreground);
+.mdw-fm-select-host {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.mdw-fm-select {
+  flex: 1;
+  min-width: 0;
+  border: none;
+  outline: none;
+  background: transparent;
+  color: var(--vscode-editor-foreground);
+  font: inherit;
+  line-height: 26px;
+  height: 26px;
+  padding: 0 2px;
+  cursor: pointer;
+}
+.mdw-fm-select:focus {
+  background: var(--vscode-input-background);
+  border-radius: 4px;
+}
+.mdw-fm-select option {
+  background: var(--vscode-dropdown-background, var(--vscode-editor-background));
+  color: var(--vscode-dropdown-foreground, var(--vscode-editor-foreground));
+}
+.mdw-fm-rel-open {
+  opacity: 0;
+}
+.mdw-fm-row:hover .mdw-fm-rel-open {
+  opacity: 1;
 }
 
 .mdw-rel-picker {

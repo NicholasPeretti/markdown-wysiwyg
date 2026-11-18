@@ -1,7 +1,8 @@
 /**
- * Popover for picking relation values (Notion-style): a filter box, the
- * target folder's files as options with check marks, and a "Create" row
- * for new options. Shared by query table cells and the properties panel.
+ * Popover for picking relation values (Notion-style): the target folder's
+ * files as options with check marks, a "Create" row for new options and,
+ * unless an external input drives it, a filter box with the current values
+ * as pills. Shared by query table cells and the properties panel.
  */
 
 export interface PickerOption {
@@ -14,7 +15,12 @@ export interface PickerConfig {
   anchor: HTMLElement;
   options: PickerOption[];
   selected: string[];
-  single: boolean;
+  multi: boolean;
+  /**
+   * Existing text input that filters the list (chips-with-autocomplete mode).
+   * Without it the popover renders its own filter box and pills.
+   */
+  input?: HTMLInputElement;
   /** Called once when the popover closes, with the final values and the names of new options. */
   onClose(values: string[], created: string[], changed: boolean): void;
 }
@@ -25,27 +31,33 @@ export interface Picker {
 
 let current: Picker | undefined;
 
+export function closeRelationPicker(): void {
+  current?.close();
+}
+
 export function openRelationPicker(cfg: PickerConfig): Picker {
   current?.close();
 
   const values = [...cfg.selected];
   const created: string[] = [];
   const initial = JSON.stringify(values);
+  const external = !!cfg.input;
   let highlight = 0;
   let closed = false;
 
   const pop = document.createElement('div');
   pop.className = 'mdw-rel-picker';
   pop.setAttribute('role', 'listbox');
-  pop.innerHTML = `
-    <div class="mdw-rel-head">
+  pop.innerHTML = external
+    ? '<div class="mdw-rel-list"></div>'
+    : `<div class="mdw-rel-head">
       <span class="mdw-rel-selected"></span>
       <input class="mdw-rel-filter" type="text" placeholder="Search or create…" spellcheck="false" />
     </div>
     <div class="mdw-rel-list"></div>`;
   document.body.appendChild(pop);
-  const selectedEl = pop.querySelector<HTMLElement>('.mdw-rel-selected')!;
-  const filter = pop.querySelector<HTMLInputElement>('.mdw-rel-filter')!;
+  const selectedEl = pop.querySelector<HTMLElement>('.mdw-rel-selected');
+  const filter = cfg.input ?? pop.querySelector<HTMLInputElement>('.mdw-rel-filter')!;
   const list = pop.querySelector<HTMLElement>('.mdw-rel-list')!;
 
   const position = () => {
@@ -70,19 +82,21 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
   let rows: Row[] = [];
 
   const render = () => {
-    selectedEl.innerHTML = values
-      .map(
-        (v) =>
-          `<span class="mdw-rel-pill" data-value="${escapeAttr(v)}">${escapeHtml(labelOf(v))}<button class="mdw-rel-pill-x" tabindex="-1" aria-label="Remove">✕</button></span>`
-      )
-      .join('');
+    if (selectedEl) {
+      selectedEl.innerHTML = values
+        .map(
+          (v) =>
+            `<span class="mdw-rel-pill" data-value="${escapeAttr(v)}">${escapeHtml(labelOf(v))}<button class="mdw-rel-pill-x" tabindex="-1" aria-label="Remove">✕</button></span>`
+        )
+        .join('');
+    }
     const q = filter.value.trim().toLowerCase();
     const matching = cfg.options.filter(
       (o) => !q || o.label.toLowerCase().includes(q) || o.value.toLowerCase().includes(q)
     );
     rows = matching.map((option) => ({ kind: 'option', option }));
     const exact = cfg.options.some((o) => o.value.toLowerCase() === q || o.label.toLowerCase() === q);
-    if (q && !exact && !created.some((c) => c.toLowerCase() === q)) {
+    if (q && !exact) {
       rows.push({ kind: 'create', name: filter.value.trim() });
     }
     highlight = Math.max(0, Math.min(highlight, rows.length - 1));
@@ -108,7 +122,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
 
   const toggle = (value: string) => {
     const i = values.indexOf(value);
-    if (cfg.single) {
+    if (!cfg.multi) {
       values.splice(0, values.length, ...(i >= 0 ? [] : [value]));
       close();
       return;
@@ -116,6 +130,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
     if (i >= 0) values.splice(i, 1);
     else values.push(value);
     filter.value = '';
+    filter.dispatchEvent(new Event('input', { bubbles: false }));
     render();
   };
 
@@ -137,22 +152,30 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
     document.removeEventListener('mousedown', onDocDown, true);
     window.removeEventListener('scroll', position, true);
     window.removeEventListener('resize', position);
+    if (external) {
+      filter.removeEventListener('input', onInput);
+      filter.removeEventListener('keydown', onKey);
+      filter.removeEventListener('blur', onBlur);
+    }
     if (current === picker) current = undefined;
     cfg.onClose(values, created, JSON.stringify(values) !== initial);
   };
 
   const onDocDown = (e: MouseEvent) => {
-    if (!pop.contains(e.target as Node)) close();
+    const t = e.target as Node;
+    if (!pop.contains(t) && !(external && cfg.anchor.contains(t))) close();
   };
-
-  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
-    pop.addEventListener(type, (ev) => ev.stopPropagation());
-  }
-  filter.addEventListener('input', () => {
+  const onBlur = () => {
+    // Let a click inside the popover land first.
+    setTimeout(() => {
+      if (!closed && document.activeElement !== filter) close();
+    }, 0);
+  };
+  const onInput = () => {
     highlight = 0;
     render();
-  });
-  filter.addEventListener('keydown', (e) => {
+  };
+  const onKey = (e: KeyboardEvent) => {
     switch (e.key) {
       case 'ArrowDown':
         e.preventDefault();
@@ -169,7 +192,8 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
         pick(rows[highlight]);
         break;
       case 'Backspace':
-        if (filter.value === '' && values.length && !cfg.single) {
+        if (filter.value === '' && values.length && cfg.multi) {
+          e.preventDefault();
           values.pop();
           render();
         }
@@ -180,7 +204,14 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
         close();
         break;
     }
-  });
+  };
+
+  for (const type of ['keydown', 'keyup', 'keypress', 'beforeinput', 'input', 'paste', 'cut', 'copy', 'mousedown', 'click', 'dblclick']) {
+    pop.addEventListener(type, (ev) => ev.stopPropagation());
+  }
+  filter.addEventListener('input', onInput);
+  filter.addEventListener('keydown', onKey);
+  if (external) filter.addEventListener('blur', onBlur);
   pop.addEventListener('mousedown', (e) => {
     // Keep focus in the filter when clicking rows/pills.
     if (e.target !== filter) e.preventDefault();

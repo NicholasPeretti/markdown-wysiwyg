@@ -16,7 +16,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **Cmd/Ctrl+click links** — opens links in the body and URLs in frontmatter fields, like the text editor. Relative paths open in VS Code.
 - **Mermaid diagrams** — ```` ```mermaid ```` blocks render as diagrams (insert with `/diagram`); flowcharts are shown in whichever orientation (LR/TD) fits the page better — add a `%% keep-direction` comment to opt out; toggle back to the source with the code block's preview button. Hover a diagram for zoom controls (−/+/Reset, or ⌘-scroll; drag to pan when zoomed) and ⛶ to open it full screen (`+`/`-` zoom, `0` fit, `Esc` close).
 - **Query tables** — Notion-style live tables of workspace files. A ```` ```query ```` fenced block (insert with `/query`) renders as a table; see [Query tables](#query-tables) below.
-- **Relations** — Notion-style relation fields whose options are the files of another folder (great for tags, people, projects). Declare them once in a folder's `index.md`; see [Relations](#relations) below.
+- **Relations** — Notion-style relation fields whose options are the files of another folder (tags, people, statuses…): chips with autocomplete or a dropdown. Declared per file under `relations:`; see [Relations](#relations) below.
 - Matches your VS Code color theme.
 
 ## Usage
@@ -62,21 +62,29 @@ Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`
 
 ## Relations
 
-A folder's `index.md` (or `README.md`) can declare which frontmatter fields are **relations** — fields whose values are the files of another folder, like a Notion relation property. The declaration applies to every file in that folder and its subfolders (a deeper `index.md` can override it):
+A file can declare in its own frontmatter that some of its fields are **relations** — fields whose values come from the files of another folder, like a Notion relation property:
 
 ```yaml
 ---
+title: Query items
 relations:
-  tags: tags                              # multi-value, options = files in tags/
-  owner: { from: ./people, single: true } # single-value; ./ is relative to this folder
+  tags: { from: tags, field: name, multi: true }   # chips with autocomplete
+  status: { from: statuses, field: name }          # dropdown
 ---
 ```
 
-Stored values are the option files' names (`tags: [kubernetes, oncall]`), so files stay plain markdown. Option labels come from the option file's `title` frontmatter when present.
+| Key | Meaning |
+| --- | --- |
+| `from` | Folder holding the options (workspace-relative; `./x` is relative to the file). Every markdown file in it is an option, except its `index.md`/`README.md`. |
+| `field` | Frontmatter field of the option file whose value is stored (e.g. `name: urgent` in `tags/urgent.md`). Default: the option's file name. |
+| `multi` | `true` → list of values, shown as chips with autocomplete. Default `false` → single value, shown as a dropdown. |
 
-- **Properties panel** — relation fields show as pills with a picker (search, toggle, `Create "x"` for new options, which writes `folder/x.md`). Cmd/Ctrl+click a pill opens the option file.
-- **Query tables** — relation cells render as pills; double-click opens the same picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file.
-- A value with no matching file shows as a dashed pill.
+Declared fields appear in the properties panel even when the file doesn't have them yet; the first value you pick adds the field. Option labels use the option file's `title` when present.
+
+- **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown with a `New…` entry. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
+- **Query tables** — relation cells render as pills; double-click opens the picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
+
+Since relations are plain frontmatter, put them in your templates so every new file gets them.
 
 ## Development
 

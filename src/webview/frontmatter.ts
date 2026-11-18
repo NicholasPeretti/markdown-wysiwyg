@@ -8,26 +8,20 @@
  */
 import YAML from 'yaml';
 import { isUrl } from './links';
+import { parseRelations, type Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
-
-export interface PanelRelation {
-  folder: string;
-  single: boolean;
-  options: PickerOption[];
-}
+import { onRelationOptionsChanged, peekOptions } from './relation_options';
 
 export interface PanelHooks {
   /** Open another markdown file (relative to the index root). */
   openFile?(path: string): void;
-  /** Create a new option file in a relation folder. */
-  createOption?(folder: string, name: string): void;
+  /** Create a new option file for a relation. */
+  createOption?(relation: Relation, name: string): void;
 }
 
 export interface FrontmatterPanel {
   get(): string | null;
   set(value: string | null): void;
-  /** Relations declared for this document's folder (field → target). */
-  setRelations(relations: Record<string, PanelRelation>): void;
 }
 
 type Entry = [key: string, value: unknown];
@@ -81,7 +75,14 @@ export function createFrontmatterPanel(
   let raw: string | null = null;
   let entries: Entry[] | null = null;
   let rawMode = false;
-  let relations: Record<string, PanelRelation> = {};
+  /** Relations declared in this document's own `relations:` field. */
+  let relations = new Map<string, Relation>();
+  /** Field currently being edited, so option refreshes don't yank the input. */
+  let editingField: string | undefined;
+
+  onRelationOptionsChanged(() => {
+    if (editingField === undefined && raw !== null && !rawMode) render();
+  });
 
   const addButton = document.createElement('button');
   addButton.className = 'mdw-fm-add';
@@ -125,6 +126,7 @@ export function createFrontmatterPanel(
       return;
     }
     entries = parseEntries(raw as string);
+    relations = parseRelations(Object.fromEntries(entries ?? []).relations, '');
     const structured = entries !== null && !rawMode;
     modeButton.textContent = structured ? '{ }' : '⊞';
     modeButton.style.display = entries === null ? 'none' : 'inline-block';
@@ -156,6 +158,12 @@ export function createFrontmatterPanel(
     current.forEach((entry, index) => {
       rows.appendChild(renderRow(current, entry, index));
     });
+    // Declared relation fields the file has no value for yet.
+    for (const field of relations.keys()) {
+      if (!current.some(([k]) => k === field)) {
+        rows.appendChild(renderRow(current, [field, null], -1));
+      }
+    }
 
     const addProp = document.createElement('button');
     addProp.className = 'mdw-fm-add-prop';
@@ -201,8 +209,13 @@ export function createFrontmatterPanel(
       render();
     });
 
-    const relation = relations[key];
-    if (relation) icon.textContent = '↗';
+    const relation = relations.get(key);
+    if (relation) icon.textContent = relation.multi ? '⊞' : '▾';
+    if (index < 0) {
+      // Implicit row from `relations:`; it gets a real entry once a value is set.
+      keyInput.disabled = true;
+      del.style.visibility = 'hidden';
+    }
     row.append(icon, keyInput, renderValue(current, value, index, relation), del);
     return row;
   };
@@ -211,7 +224,7 @@ export function createFrontmatterPanel(
     current: Entry[],
     value: unknown,
     index: number,
-    relation?: PanelRelation
+    relation?: Relation
   ): HTMLElement => {
     const setValue = (next: unknown) => {
       const nextEntries = [...current] as Entry[];
@@ -220,7 +233,13 @@ export function createFrontmatterPanel(
     };
 
     if (relation) {
-      return renderRelation(value, relation, setValue);
+      const key = index < 0 ? undefined : current[index][0];
+      const setRelValue = (next: unknown) => {
+        if (key !== undefined) return setValue(next);
+        const field = [...relations.keys()].find((f) => !current.some(([k]) => k === f) && relations.get(f) === relation)!;
+        commit([...current, [field, next]]);
+      };
+      return relation.multi ? renderRelationChips(value, relation, setRelValue) : renderRelationSelect(value, relation, setRelValue);
     }
 
     if (typeof value === 'boolean') {
@@ -237,6 +256,16 @@ export function createFrontmatterPanel(
 
     if (Array.isArray(value)) {
       return renderPills(value, setValue);
+    }
+
+    if (index >= 0 && current[index][0] === 'relations' && value !== null && typeof value === 'object') {
+      const host = document.createElement('div');
+      host.className = 'mdw-fm-value mdw-fm-complex mdw-fm-schema';
+      host.textContent = [...relations.entries()]
+        .map(([f, r]) => `${f} → ${r.folder || '.'}${r.field ? `.${r.field}` : ''}${r.multi ? ' (multi)' : ''}`)
+        .join(', ');
+      host.title = `${YAML.stringify(value).trimEnd()}\n\nEdit in raw YAML mode`;
+      return host;
     }
 
     if (value !== null && typeof value === 'object') {
@@ -303,63 +332,158 @@ export function createFrontmatterPanel(
     return host;
   };
 
-  const renderRelation = (
+  const relationValues = (value: unknown): string[] =>
+    (Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value]).map(String);
+
+  const renderRelationChips = (
     value: unknown,
-    relation: PanelRelation,
+    relation: Relation,
     setValue: (next: unknown) => void
   ): HTMLElement => {
-    const values = (Array.isArray(value) ? value : value === null || value === undefined || value === '' ? [] : [value]).map(
-      String
-    );
+    const values = relationValues(value);
+    const options = peekOptions(relation) ?? [];
     const host = document.createElement('div');
     host.className = 'mdw-fm-value mdw-fm-pills mdw-fm-relation';
 
     values.forEach((v, i) => {
-      const option = relation.options.find((o) => o.value === v);
-      const pill = document.createElement('span');
-      pill.className = 'mdw-fm-pill mdw-fm-rel';
-      if (!option) pill.classList.add('mdw-fm-rel-missing');
-      pill.title = option ? '⌘-click to open' : 'No such option';
-      const text = document.createElement('span');
-      text.textContent = option?.label ?? v;
-      text.addEventListener('click', (e) => {
-        if ((e.metaKey || e.ctrlKey) && option) {
-          e.preventDefault();
-          e.stopPropagation();
-          hooks.openFile?.(option.path);
-        }
-      });
-      const x = document.createElement('button');
-      x.className = 'mdw-fm-pill-x';
-      x.textContent = '✕';
-      x.addEventListener('click', () => {
-        const next = values.filter((_, j) => j !== i);
-        setValue(relation.single ? next[0] ?? null : next);
-        render();
-      });
-      pill.append(text, x);
-      host.appendChild(pill);
+      const option = options.find((o) => o.value === v);
+      host.appendChild(
+        relationPill(v, option, () => {
+          setValue(values.filter((_, j) => j !== i));
+          render();
+        })
+      );
     });
 
-    const add = document.createElement('button');
-    add.className = 'mdw-fm-pill-input mdw-fm-rel-add';
-    add.textContent = values.length ? '+' : 'Select…';
-    add.addEventListener('click', () => {
+    const input = document.createElement('input');
+    input.className = 'mdw-fm-pill-input';
+    input.placeholder = '+';
+    input.spellcheck = false;
+    const open = () => {
+      if (editingField !== undefined) return;
+      editingField = relation.folder;
       openRelationPicker({
         anchor: host,
-        options: relation.options,
+        input,
+        options: [...(peekOptions(relation) ?? [])],
         selected: values,
-        single: relation.single,
+        multi: true,
         onClose: (next, created, changed) => {
+          editingField = undefined;
           if (!changed) return;
-          for (const name of created) hooks.createOption?.(relation.folder, name);
-          setValue(relation.single ? next[0] ?? null : next);
+          for (const name of created) hooks.createOption?.(relation, name);
+          setValue(next);
           render();
         },
       });
-    });
-    host.appendChild(add);
+    };
+    input.addEventListener('focus', open);
+    input.addEventListener('mousedown', () => input.focus());
+    host.appendChild(input);
     return host;
+  };
+
+  const renderRelationSelect = (
+    value: unknown,
+    relation: Relation,
+    setValue: (next: unknown) => void
+  ): HTMLElement => {
+    const current = relationValues(value)[0];
+    const options = peekOptions(relation) ?? [];
+    const host = document.createElement('div');
+    host.className = 'mdw-fm-value mdw-fm-relation mdw-fm-select-host';
+
+    const select = document.createElement('select');
+    select.className = 'mdw-fm-select';
+    const empty = document.createElement('option');
+    empty.value = '';
+    empty.textContent = '—';
+    select.appendChild(empty);
+    if (current !== undefined && !options.some((o) => o.value === current)) {
+      const missing = document.createElement('option');
+      missing.value = current;
+      missing.textContent = `${current} (missing)`;
+      select.appendChild(missing);
+    }
+    for (const o of options) {
+      const opt = document.createElement('option');
+      opt.value = o.value;
+      opt.textContent = o.label === o.value ? o.label : `${o.label} (${o.value})`;
+      select.appendChild(opt);
+    }
+    const create = document.createElement('option');
+    create.value = '\u0000new';
+    create.textContent = 'New…';
+    select.appendChild(create);
+    select.value = current ?? '';
+    select.addEventListener('change', () => {
+      if (select.value === '\u0000new') {
+        select.replaceWith(newOptionInput(relation, (name) => {
+          hooks.createOption?.(relation, name);
+          setValue(name);
+          render();
+        }, render));
+        return;
+      }
+      setValue(select.value === '' ? null : select.value);
+      render();
+    });
+    host.appendChild(select);
+
+    const option = options.find((o) => o.value === current);
+    if (option) {
+      const link = document.createElement('button');
+      link.className = 'mdw-fm-btn mdw-fm-rel-open';
+      link.title = 'Open';
+      link.textContent = '↗';
+      link.addEventListener('click', () => hooks.openFile?.(option.path));
+      host.appendChild(link);
+    }
+    return host;
+  };
+
+  const newOptionInput = (relation: Relation, onDone: (name: string) => void, onCancel: () => void): HTMLElement => {
+    const input = document.createElement('input');
+    input.className = 'mdw-fm-value mdw-fm-text';
+    input.placeholder = `New ${relation.folder || 'option'}…`;
+    input.spellcheck = false;
+    let done = false;
+    const finish = (commitValue: boolean) => {
+      if (done) return;
+      done = true;
+      const name = input.value.trim();
+      if (commitValue && name) onDone(name);
+      else onCancel();
+    };
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') finish(true);
+      else if (e.key === 'Escape') finish(false);
+    });
+    input.addEventListener('blur', () => finish(true));
+    requestAnimationFrame(() => input.focus());
+    return input;
+  };
+
+  const relationPill = (v: string, option: PickerOption | undefined, onRemove: () => void): HTMLElement => {
+    const pill = document.createElement('span');
+    pill.className = 'mdw-fm-pill mdw-fm-rel';
+    if (!option) pill.classList.add('mdw-fm-rel-missing');
+    pill.title = option ? '⌘-click to open' : 'No such option';
+    const text = document.createElement('span');
+    text.textContent = option?.label ?? v;
+    text.addEventListener('click', (e) => {
+      if ((e.metaKey || e.ctrlKey) && option) {
+        e.preventDefault();
+        e.stopPropagation();
+        hooks.openFile?.(option.path);
+      }
+    });
+    const x = document.createElement('button');
+    x.className = 'mdw-fm-pill-x';
+    x.textContent = '✕';
+    x.addEventListener('click', onRemove);
+    pill.append(text, x);
+    return pill;
   };
 
   modeButton.addEventListener('click', () => {
@@ -388,10 +512,6 @@ export function createFrontmatterPanel(
         raw = next;
         render();
       }
-    },
-    setRelations: (next) => {
-      relations = next;
-      render();
     },
   };
 }

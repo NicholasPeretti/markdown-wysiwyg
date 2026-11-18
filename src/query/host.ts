@@ -20,7 +20,7 @@ import {
   type Query,
 } from './lang';
 import type { CompletionContext } from './complete';
-import { labelFor, relationsFor, targetPath, type Relation, type RelationSource } from './relations';
+import { relationsFor, resolveOption, type Relation, type RelationSource } from './relations';
 
 /** Bytes read from the head of a file to find its frontmatter. */
 const HEAD_BYTES = 4096;
@@ -35,7 +35,7 @@ export type Cell =
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
   | { kind: 'object'; value: string }
-  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; single: boolean };
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation };
 
 export interface QueryResult {
   columns: string[];
@@ -312,17 +312,16 @@ function groupKey(v: unknown): string {
 }
 
 function relationCell(source: RelationSource, rel: Relation, v: unknown): Cell {
-  if (v === undefined || v === null) return { kind: 'relation', items: [], single: rel.single };
+  if (v === undefined || v === null) return { kind: 'relation', items: [], relation: rel };
   const values = Array.isArray(v) ? v : [v];
   return {
     kind: 'relation',
-    single: rel.single,
+    relation: rel,
     items: values
       .filter((x) => x !== null && x !== undefined && typeof x !== 'object')
       .map((x) => {
-        const path = targetPath(source, rel, String(x));
-        const label = path ? labelFor(source, path) : undefined;
-        return { value: String(x), path, ...(label && label !== String(x) ? { label } : {}) };
+        const opt = resolveOption(source, rel, String(x));
+        return { value: String(x), path: opt?.path, ...(opt && opt.label !== String(x) ? { label: opt.label } : {}) };
       }),
   };
 }

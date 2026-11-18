@@ -16,12 +16,12 @@ import {
 } from './query_table';
 import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
+import { handleRelationMessage, installRelationOptions } from './relation_options';
 import { findPlugin, installFind } from './find';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
   composeDocument,
   createFrontmatterPanel,
-  type PanelRelation,
   splitFrontmatter,
   type FrontmatterPanel,
 } from './frontmatter';
@@ -77,9 +77,8 @@ async function createEditor(initial: string): Promise<void> {
   root.before(fmHost);
   frontmatterPanel = createFrontmatterPanel(fmHost, sendEdit, {
     openFile: (path) => vscode.postMessage({ type: 'openFile', path }),
-    createOption: (folder, name) => vscode.postMessage({ type: 'createOption', folder, name }),
+    createOption: (relation, name) => vscode.postMessage({ type: 'createOption', relation, name }),
   });
-  if (pendingRelations) frontmatterPanel.setRelations(pendingRelations);
   frontmatterPanel.set(fm);
 
   crepe = new Crepe({
@@ -156,17 +155,12 @@ async function createEditor(initial: string): Promise<void> {
   toc = createToc(root, tocVisible);
 }
 
-/** Relations received before the editor (and its panel) existed. */
-let pendingRelations: Record<string, PanelRelation> | undefined;
-
 window.addEventListener('message', async (event) => {
   const message = event.data;
   if (message && handleQueryMessage(message)) {
     return;
   }
-  if (message?.type === 'relations') {
-    pendingRelations = message.relations;
-    frontmatterPanel?.setRelations(message.relations);
+  if (message && handleRelationMessage(message)) {
     return;
   }
   if (message?.type === 'toggleToc') {
@@ -199,6 +193,7 @@ window.addEventListener('message', async (event) => {
   }
 });
 
+installRelationOptions((message) => vscode.postMessage(message));
 installLinkHandler((href) => vscode.postMessage({ type: 'openLink', href }));
 installOverflowWatcher(document.body);
 installMermaidViewer();

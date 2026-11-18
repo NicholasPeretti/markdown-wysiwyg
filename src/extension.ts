@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { FileIndex, runQuery } from './query/host';
-import { renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
-import { createOption, optionsFor, relationsFor } from './query/relations';
+import { createOption, renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
+import { optionsFor, type Relation } from './query/relations';
 import { complete } from './query/complete';
 
 const VIEW_TYPE = 'markdownWysiwyg.editor';
@@ -234,22 +234,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       postContent();
     });
 
-    // Relations declared for this document's folder, for the properties panel.
-    const postRelations = async () => {
-      const index = indexFor(document.uri);
-      if (!index) return;
-      await index.ensure();
-      const rel = path.relative(index.folder.uri.fsPath, document.uri.fsPath).split(path.sep).join('/');
-      const relations: { [field: string]: unknown } = {};
-      for (const [field, r] of relationsFor(index, rel)) {
-        relations[field] = { ...r, options: optionsFor(index, r.folder) };
-      }
-      webviewPanel.webview.postMessage({ type: 'relations', relations });
-    };
-
     const indexSub = indexFor(document.uri)?.onDidChange(() => {
       webviewPanel.webview.postMessage({ type: 'queryRefresh' });
-      void postRelations();
+      webviewPanel.webview.postMessage({ type: 'relationsChanged' });
     });
 
     const viewStateSub = webviewPanel.onDidChangeViewState(() => {
@@ -263,7 +250,6 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       switch (message.type) {
         case 'ready':
           postContent();
-          void postRelations();
           break;
         case 'tocVisible':
           this.context.globalState.update('tocVisible', message.value);
@@ -302,14 +288,16 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           break;
         }
         case 'relationOptions': {
+          // Options for a relation spec sent by the webview (panel or table cell).
           const index = indexFor(document.uri);
           if (!index) break;
           await index.ensure();
-          const rel = relationsFor(index, String(message.path)).get(String(message.field));
+          const rel = message.relation as Relation;
           webviewPanel.webview.postMessage({
             type: 'relationOptionsResult',
             id: message.id,
-            relation: rel ? { ...rel, options: optionsFor(index, rel.folder) } : null,
+            key: message.key,
+            options: optionsFor(index, rel),
           });
           break;
         }
@@ -317,7 +305,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           const index = indexFor(document.uri);
           if (!index) break;
           try {
-            await createOption(index.folder.uri, String(message.folder), String(message.name));
+            await createOption(index.folder.uri, message.relation as Relation, String(message.name));
           } catch (err) {
             void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
           }
@@ -327,12 +315,13 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           const index = indexFor(document.uri);
           if (!index) break;
           const target = vscode.Uri.joinPath(index.folder.uri, String(message.path));
+          const rel = message.relation as Relation;
           try {
             const values = (message.values as string[]).map(String);
             for (const name of (message.create as string[] | undefined) ?? []) {
-              await createOption(index.folder.uri, String(message.folder), name);
+              await createOption(index.folder.uri, rel, name);
             }
-            const value = message.single ? values[0] : values.length ? values : undefined;
+            const value = rel.multi ? (values.length ? values : undefined) : values[0];
             await setFrontmatterValue(target, String(message.field), value);
           } catch (err) {
             void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
