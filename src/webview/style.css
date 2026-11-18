@@ -1215,17 +1215,6 @@ body {
   justify-content: center;
   transform-origin: 0 0;
 }
-/* Diagrams break out of the text column to the full editor width (minus gutters). */
-.milkdown .milkdown-code-block .preview-panel .preview:has(.mdw-mermaid),
-.milkdown .milkdown-code-block:has(.mdw-mermaid),
-.milkdown .milkdown-code-block:has(.mdw-mermaid) .preview-panel {
-  overflow: visible;
-}
-.milkdown .milkdown-code-block .preview .mdw-mermaid {
-  --mdw-gutter: 32px;
-  width: calc(var(--mdw-vw, 100vw) - 2 * var(--mdw-gutter));
-  margin-left: calc(50% - var(--mdw-vw, 100vw) / 2 + var(--mdw-gutter));
-}
 /* Size: fill the width, but never above 1.25x natural size, never below 0.75x
    (readability floor — the diagram becomes pannable instead), never taller than 70vh. */
 .milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-stage {

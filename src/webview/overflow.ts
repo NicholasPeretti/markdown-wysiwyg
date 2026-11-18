@@ -21,11 +21,6 @@ interface ScrollState {
 const states = new WeakMap<HTMLElement, ScrollState>();
 
 export function installOverflowWatcher(root: HTMLElement): void {
-  // Viewport width minus scrollbar, for full-bleed blocks (100vw includes the scrollbar).
-  const setViewportVar = () => document.documentElement.style.setProperty('--mdw-vw', `${document.documentElement.clientWidth}px`);
-  setViewportVar();
-  window.addEventListener('resize', setViewportVar);
-
   const seen = new WeakSet<Element>();
   const ro = new ResizeObserver((entries) => {
     for (const e of entries) update(e.target as HTMLElement);
