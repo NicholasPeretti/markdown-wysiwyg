@@ -1215,17 +1215,11 @@ body {
   justify-content: center;
   transform-origin: 0 0;
 }
-/* Size: fill the width, but never above 1.25x natural size, never below 0.75x
-   (readability floor — the diagram becomes pannable instead), never taller than 70vh. */
-.milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-stage {
-  justify-content: safe center;
-}
+/* Fill the width, but never above 1.25x natural size or taller than 70vh. */
 .milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-stage svg {
   width: 100%;
   height: auto;
   max-width: calc(var(--mdw-nat-w, 100000px) * 1.25) !important;
-  min-width: calc(var(--mdw-nat-w, 0px) * 0.75);
-  min-height: calc(var(--mdw-nat-h, 0px) * 0.75);
   max-height: 70vh;
 }
 .milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-hud {
