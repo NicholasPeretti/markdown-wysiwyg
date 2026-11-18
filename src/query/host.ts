@@ -21,10 +21,13 @@ import {
 } from './lang';
 import type { CompletionContext } from './complete';
 import { relationsFor, resolveOption, type Relation, type RelationSource } from './relations';
+import { SearchIndex, snippet, type Snippet } from './search';
 
 /** Bytes read from the head of a file to find its frontmatter. */
 const HEAD_BYTES = 4096;
 const MAX_HEAD_BYTES = 64 * 1024;
+/** Files larger than this are indexed by frontmatter only, not full text. */
+const MAX_TEXT_BYTES = 1024 * 1024;
 
 export type Cell =
   | { kind: 'null' }
@@ -52,8 +55,20 @@ function isMarkdown(uri: vscode.Uri): boolean {
   return /\.(md|markdown)$/i.test(uri.path);
 }
 
+export interface SearchResult {
+  path: string;
+  name: string;
+  title?: string;
+  folder: string;
+  score: number;
+  snippet: Snippet;
+}
+
 export class FileIndex implements vscode.Disposable {
   private readonly entries = new Map<string, FileRecord>();
+  private readonly search = new SearchIndex();
+  /** Body text of each indexed file and the line it starts on, for snippets. */
+  private readonly texts = new Map<string, { body: string; line: number }>();
   private building: Promise<void> | undefined;
   private readonly disposables: vscode.Disposable[] = [];
   private readonly changeEmitter = new vscode.EventEmitter<void>();
@@ -94,7 +109,7 @@ export class FileIndex implements vscode.Disposable {
     let changed = loads.length > 0;
     for (const rel of [...this.entries.keys()]) {
       if (!seen.has(rel)) {
-        this.entries.delete(rel);
+        this.drop(rel);
         changed = true;
       }
     }
@@ -114,6 +129,8 @@ export class FileIndex implements vscode.Disposable {
 
   async rebuild(): Promise<void> {
     this.entries.clear();
+    this.search.clear();
+    this.texts.clear();
     this.building = this.build();
     await this.building;
     this.emitChange();
@@ -121,6 +138,23 @@ export class FileIndex implements vscode.Disposable {
 
   records(): FileRecord[] {
     return [...this.entries.values()];
+  }
+
+  /** BM25-ranked files for a free-text query, with a snippet around the best passage. */
+  find(query: string, limit = 50): SearchResult[] {
+    const groups = this.search.queryTerms(query);
+    return this.search.search(query, limit).map(({ id, score }) => {
+      const rec = this.entries.get(id)!;
+      const title = typeof rec.fm.title === 'string' ? rec.fm.title : undefined;
+      return {
+        path: id,
+        name: rec.file.name,
+        title,
+        folder: rec.file.folder,
+        score,
+        snippet: bodySnippet(this.texts.get(id), groups),
+      };
+    });
   }
 
   record(relPath: string): FileRecord | undefined {
@@ -206,17 +240,23 @@ export class FileIndex implements vscode.Disposable {
   /** Drops the file, or every file under the path when a folder went away. */
   private remove(uri: vscode.Uri): void {
     const rel = this.relative(uri);
-    let changed = this.entries.delete(rel);
+    let changed = this.drop(rel);
     if (!isMarkdown(uri)) {
       const prefix = `${rel}/`;
       for (const key of [...this.entries.keys()]) {
         if (key.startsWith(prefix)) {
-          this.entries.delete(key);
+          this.drop(key);
           changed = true;
         }
       }
     }
     if (changed) this.emitChange();
+  }
+
+  private drop(rel: string): boolean {
+    this.search.delete(rel);
+    this.texts.delete(rel);
+    return this.entries.delete(rel);
   }
 
   private emitChange(): void {
@@ -234,12 +274,25 @@ export class FileIndex implements vscode.Disposable {
     try {
       const stat = await fs.stat(uri.fsPath);
       if (!stat.isFile()) return;
-      const fm = await readFrontmatter(uri.fsPath, stat.size);
       const base = path.posix.basename(rel);
+      const name = base.replace(/\.(md|markdown)$/i, '');
+      let fm: { [k: string]: unknown };
+      if (stat.size <= MAX_TEXT_BYTES) {
+        const text = await fs.readFile(uri.fsPath, 'utf8');
+        const split = splitFrontmatter(text);
+        fm = split.fm;
+        this.texts.set(rel, { body: split.body, line: text.slice(0, text.length - split.body.length).split('\n').length - 1 });
+        const title = typeof fm.title === 'string' ? fm.title : '';
+        this.search.set(rel, `${name} ${title}`, split.body);
+      } else {
+        fm = await readFrontmatter(uri.fsPath, stat.size);
+        this.texts.delete(rel);
+        this.search.delete(rel);
+      }
       this.entries.set(rel, {
         file: {
           path: rel,
-          name: base.replace(/\.(md|markdown)$/i, ''),
+          name,
           folder: path.posix.dirname(rel) === '.' ? '' : path.posix.dirname(rel),
           modified: stat.mtimeMs,
           created: stat.birthtimeMs || stat.mtimeMs,
@@ -248,7 +301,7 @@ export class FileIndex implements vscode.Disposable {
         fm,
       });
     } catch {
-      this.entries.delete(rel);
+      this.drop(rel);
     }
   }
 }
@@ -277,6 +330,22 @@ function collectFields(
       if (set.size < 50) set.add(str);
     }
   }
+}
+
+function bodySnippet(entry: { body: string; line: number } | undefined, groups: string[][]): Snippet {
+  if (!entry) return { text: '', line: 0 };
+  const s = snippet(entry.body, groups);
+  return { text: s.text, line: s.line + entry.line };
+}
+
+/** Frontmatter object and the Markdown body of a whole file's text. */
+function splitFrontmatter(text: string): { fm: { [k: string]: unknown }; body: string } {
+  if (!/^\uFEFF?---[ \t]*\r?\n/.test(text)) return { fm: {}, body: text };
+  const close = /\r?\n(---|\.\.\.)[ \t]*(\r?\n|$)/.exec(text.slice(4));
+  if (!close) return { fm: {}, body: text };
+  const yamlText = text.slice(text.indexOf('\n') + 1, 4 + close.index);
+  const body = text.slice(4 + close.index + close[0].length);
+  return { fm: parseYaml(yamlText), body };
 }
 
 async function readFrontmatter(file: string, size: number): Promise<{ [k: string]: unknown }> {

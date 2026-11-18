@@ -45,6 +45,8 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.setStatusBarMessage('Markdown query index rebuilt', 3000);
     }),
 
+    vscode.commands.registerCommand('markdownWysiwyg.search', () => searchNotes()),
+
     vscode.languages.registerCompletionItemProvider(
       'markdown',
       new QueryCompletionProvider(),
@@ -98,6 +100,86 @@ function indexFor(uri: vscode.Uri): FileIndex | undefined {
     indexes.set(key, index);
   }
   return index;
+}
+
+interface SearchItem extends vscode.QuickPickItem {
+  uri: vscode.Uri;
+  line: number;
+}
+
+const OPEN_SOURCE_BUTTON: vscode.QuickInputButton = {
+  iconPath: new vscode.ThemeIcon('code'),
+  tooltip: 'Open source at match',
+};
+
+/** Ranked full-text search over the workspace's notes, in a quick pick. */
+async function searchNotes(): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (!folders.length) {
+    void vscode.window.showInformationMessage('Open a folder to search its notes.');
+    return;
+  }
+  const all = folders.map((f) => indexFor(f.uri)!);
+  const pick = vscode.window.createQuickPick<SearchItem>();
+  pick.placeholder = 'Search notes (every word must match; ranked by relevance)';
+  pick.matchOnDescription = false;
+  pick.matchOnDetail = false;
+  // Keep BM25 order: VS Code would otherwise sort items by label match.
+  (pick as unknown as { sortByLabel: boolean }).sortByLabel = false;
+  pick.busy = true;
+  pick.show();
+  await Promise.all(all.map((index) => index.ensure()));
+  pick.busy = false;
+
+  let timer: NodeJS.Timeout | undefined;
+  const update = () => {
+    const query = pick.value.trim();
+    if (!query) {
+      pick.items = [];
+      return;
+    }
+    const hits = all
+      .flatMap((index) =>
+        index.find(query, 50).map((hit) => ({ hit, folder: index.folder, multi: folders.length > 1 }))
+      )
+      .sort((a, b) => b.hit.score - a.hit.score)
+      .slice(0, 50);
+    pick.items = hits.map(({ hit, folder, multi }) => ({
+      label: `$(markdown) ${hit.title ?? hit.name}`,
+      description: [multi ? folder.name : '', hit.folder, hit.title ? `${hit.name}.md` : ''].filter(Boolean).join(' › '),
+      detail: hit.snippet.text || undefined,
+      alwaysShow: true,
+      buttons: [OPEN_SOURCE_BUTTON],
+      uri: vscode.Uri.joinPath(folder.uri, hit.path),
+      line: hit.snippet.line,
+    }));
+  };
+  update();
+
+  pick.onDidChangeValue(() => {
+    clearTimeout(timer);
+    timer = setTimeout(update, 60);
+  });
+  pick.onDidAccept(() => {
+    const item = pick.selectedItems[0];
+    if (!item) return;
+    pick.hide();
+    codeModeUris.delete(item.uri.toString());
+    void vscode.commands.executeCommand('vscode.openWith', item.uri, VIEW_TYPE);
+  });
+  pick.onDidTriggerItemButton(async ({ item }) => {
+    pick.hide();
+    codeModeUris.add(item.uri.toString());
+    const doc = await vscode.workspace.openTextDocument(item.uri);
+    const editor = await vscode.window.showTextDocument(doc);
+    const pos = new vscode.Position(Math.min(item.line, doc.lineCount - 1), 0);
+    editor.selection = new vscode.Selection(pos, pos);
+    editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
+  });
+  pick.onDidHide(() => {
+    clearTimeout(timer);
+    pick.dispose();
+  });
 }
 
 /** Completions inside ```query fences of a plain-text Markdown editor. */

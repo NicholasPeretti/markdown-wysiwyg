@@ -49,6 +49,11 @@
       {
         "command": "markdownWysiwyg.rebuildQueryIndex",
         "title": "Markdown WYSIWYG: Rebuild Query Index"
+      },
+      {
+        "command": "markdownWysiwyg.search",
+        "title": "Markdown: Search Notes",
+        "icon": "$(search)"
       }
     ],
     "keybindings": [
@@ -63,6 +68,11 @@
         "key": "ctrl+alt+m",
         "mac": "alt+cmd+m",
         "when": "activeCustomEditorId == markdownWysiwyg.editor"
+      },
+      {
+        "command": "markdownWysiwyg.search",
+        "key": "ctrl+shift+alt+f",
+        "mac": "shift+alt+cmd+f"
       }
     ],
     "menus": {
