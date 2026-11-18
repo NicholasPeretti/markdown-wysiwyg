@@ -874,7 +874,8 @@ body {
 
 .mdw-qt:hover .mdw-qt-actions,
 .mdw-qt-editing .mdw-qt-actions,
-.mdw-qt-actions:has(.mdw-qt-menu.open) {
+.mdw-qt-actions:has(.mdw-qt-menu.open),
+.mdw-qt-actions:has(.mdw-qt-filter.open) {
   opacity: 1;
 }
 
@@ -982,9 +983,8 @@ body {
   gap: 4px;
 }
 
-/* Footer filter: a quiet magnifier that expands into a text box. */
+/* Toolbar filter: a magnifier that expands into a text box. */
 .mdw-qt-filter {
-  margin-left: auto;
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -994,14 +994,11 @@ body {
 .mdw-qt-filter > button {
   display: inline-flex;
   align-items: center;
-  opacity: 0;
-  transition: opacity 0.15s;
 }
 
-.mdw-qt:hover .mdw-qt-filter > button,
-.mdw-qt-filter.open > button,
-.mdw-qt-filter > button:focus-visible {
-  opacity: 1;
+/* The filter is for results; hide it while the query source is shown. */
+.mdw-qt-editing .mdw-qt-filter {
+  display: none;
 }
 
 .mdw-qt-filter input {
@@ -1022,7 +1019,9 @@ body {
 
 .mdw-qt-filter.open input {
   width: 160px;
-  padding: 2px 6px;
+  height: 19px;
+  padding: 0 6px;
+  font-size: 12px;
   opacity: 1;
 }
 
@@ -2138,4 +2137,16 @@ body {
 
 .mdw-block-menu-danger {
   color: var(--vscode-editorError-foreground, #f85149);
+}
+
+/* With the filter open the toolbar becomes a real row above the table so
+   the text box does not cover the last column header. */
+.mdw-qt:not(.mdw-qt-editing *):has(.mdw-qt-filter.open) .mdw-qt-toolbar {
+  height: auto;
+  padding-bottom: 4px;
+  background: var(--vscode-editor-background);
+}
+
+.mdw-qt:has(.mdw-qt-filter.open) .mdw-qt-toolbar .mdw-qt-actions {
+  box-shadow: none;
 }
