@@ -46,6 +46,12 @@ export interface QueryResult {
   groups?: { value: Cell; rows: number[] }[];
 }
 
+const RECONCILE_MS = 3000;
+
+function isMarkdown(uri: vscode.Uri): boolean {
+  return /\.(md|markdown)$/i.test(uri.path);
+}
+
 export class FileIndex implements vscode.Disposable {
   private readonly entries = new Map<string, FileRecord>();
   private building: Promise<void> | undefined;
@@ -56,13 +62,44 @@ export class FileIndex implements vscode.Disposable {
   private changeTimer: NodeJS.Timeout | undefined;
 
   constructor(readonly folder: vscode.WorkspaceFolder) {
-    const watcher = vscode.workspace.createFileSystemWatcher(
-      new vscode.RelativePattern(folder, '**/*.{md,markdown}')
-    );
-    watcher.onDidCreate((uri) => this.refresh(uri));
-    watcher.onDidChange((uri) => this.refresh(uri));
+    // Watch everything, not just `*.md`: when a folder is moved or deleted
+    // VS Code only reports the folder, so a markdown-only pattern would
+    // never hear about the files inside it.
+    const watcher = vscode.workspace.createFileSystemWatcher(new vscode.RelativePattern(folder, '**'));
+    watcher.onDidCreate((uri) => this.onCreated(uri));
+    watcher.onDidChange((uri) => (isMarkdown(uri) ? this.refresh(uri) : undefined));
     watcher.onDidDelete((uri) => this.remove(uri));
     this.disposables.push(watcher, this.changeEmitter);
+  }
+
+  private lastReconcile = 0;
+
+  /**
+   * Re-lists the workspace and fixes any drift (files the watcher missed),
+   * at most once per `RECONCILE_MS`. Cheap enough to run before each query.
+   */
+  async reconcile(force = false): Promise<void> {
+    await this.ensure();
+    const now = Date.now();
+    if (!force && now - this.lastReconcile < RECONCILE_MS) return;
+    this.lastReconcile = now;
+    const uris = await this.list();
+    const seen = new Set<string>();
+    const loads: Promise<void>[] = [];
+    for (const uri of uris) {
+      const rel = this.relative(uri);
+      seen.add(rel);
+      if (!this.entries.has(rel)) loads.push(this.load(uri));
+    }
+    let changed = loads.length > 0;
+    for (const rel of [...this.entries.keys()]) {
+      if (!seen.has(rel)) {
+        this.entries.delete(rel);
+        changed = true;
+      }
+    }
+    await Promise.all(loads);
+    if (changed) this.emitChange();
   }
 
   dispose(): void {
@@ -129,11 +166,16 @@ export class FileIndex implements vscode.Disposable {
     };
   }
 
-  private async build(): Promise<void> {
-    const uris = await vscode.workspace.findFiles(
+  private list(): Thenable<vscode.Uri[]> {
+    return vscode.workspace.findFiles(
       new vscode.RelativePattern(this.folder, '**/*.{md,markdown}'),
       '**/node_modules/**'
     );
+  }
+
+  private async build(): Promise<void> {
+    this.lastReconcile = Date.now();
+    const uris = await this.list();
     await Promise.all(uris.map((uri) => this.load(uri)));
   }
 
@@ -143,8 +185,38 @@ export class FileIndex implements vscode.Disposable {
     this.emitChange();
   }
 
+  /** A created path may be a folder moved in: index every markdown file under it. */
+  private async onCreated(uri: vscode.Uri): Promise<void> {
+    if (!this.building) return;
+    if (isMarkdown(uri)) return this.refresh(uri);
+    try {
+      if (!(await fs.stat(uri.fsPath)).isDirectory()) return;
+    } catch {
+      return;
+    }
+    const uris = await vscode.workspace.findFiles(
+      new vscode.RelativePattern(uri, '**/*.{md,markdown}'),
+      '**/node_modules/**'
+    );
+    if (uris.length === 0) return;
+    await Promise.all(uris.map((u) => this.load(u)));
+    this.emitChange();
+  }
+
+  /** Drops the file, or every file under the path when a folder went away. */
   private remove(uri: vscode.Uri): void {
-    if (this.entries.delete(this.relative(uri))) this.emitChange();
+    const rel = this.relative(uri);
+    let changed = this.entries.delete(rel);
+    if (!isMarkdown(uri)) {
+      const prefix = `${rel}/`;
+      for (const key of [...this.entries.keys()]) {
+        if (key.startsWith(prefix)) {
+          this.entries.delete(key);
+          changed = true;
+        }
+      }
+    }
+    if (changed) this.emitChange();
   }
 
   private emitChange(): void {

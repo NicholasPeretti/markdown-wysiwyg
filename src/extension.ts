@@ -58,6 +58,12 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
 
+    // Regaining focus after working elsewhere: re-list the workspace so
+    // queries reflect moves/deletes the watcher may have missed.
+    vscode.window.onDidChangeWindowState((state) => {
+      if (state.focused) indexes.forEach((index) => void index.reconcile(true));
+    }),
+
     { dispose: () => indexes.forEach((index) => index.dispose()) },
 
     // VS Code's editor history can reopen markdown as plain text (e.g. after
@@ -244,6 +250,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
         activeCustomEditorUri = document.uri;
         activePanel = webviewPanel;
       }
+      // Coming back to a panel: catch up on anything that changed on disk
+      // while it was hidden (external tools, agents, git checkouts…).
+      if (webviewPanel.visible) void indexFor(document.uri)?.reconcile(true);
     });
 
     webviewPanel.webview.onDidReceiveMessage(async (message) => {
@@ -271,7 +280,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.webview.postMessage({ type: 'queryError', id: message.id, message: 'No workspace folder open' });
             break;
           }
-          await index.ensure();
+          await index.reconcile();
           const fmText = typeof message.frontmatter === 'string' ? message.frontmatter : null;
           const self = index.selfRecord(document.uri, fmText);
           const result = runQuery(String(message.text), index.records(), index, self);
@@ -293,7 +302,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           // Options for a relation spec sent by the webview (panel or table cell).
           const index = indexFor(document.uri);
           if (!index) break;
-          await index.ensure();
+          await index.reconcile();
           const rel = message.relation as Relation;
           webviewPanel.webview.postMessage({
             type: 'relationOptionsResult',
