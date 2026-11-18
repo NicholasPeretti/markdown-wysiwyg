@@ -88,7 +88,7 @@ You can also manage declarations from the properties panel: **+ Add relation** (
 
 Declared fields appear in the properties panel even when the file doesn't have them yet; the first value you pick adds the field. Option labels use the option file's `title` when present.
 
-- **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown with a `New…` entry. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
+- **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown of the existing options. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
 - **Query tables** — relation cells render as pills; double-click opens the picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
 
 Since relations are plain frontmatter, put them in your templates so every new file gets them.

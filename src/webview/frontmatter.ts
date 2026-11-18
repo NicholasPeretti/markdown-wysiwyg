@@ -448,20 +448,8 @@ export function createFrontmatterPanel(
       opt.textContent = o.label === o.value ? o.label : `${o.label} (${o.value})`;
       select.appendChild(opt);
     }
-    const create = document.createElement('option');
-    create.value = '\u0000new';
-    create.textContent = 'New…';
-    select.appendChild(create);
     select.value = current ?? '';
     select.addEventListener('change', () => {
-      if (select.value === '\u0000new') {
-        select.replaceWith(newOptionInput(relation, (name) => {
-          hooks.createOption?.(relation, name);
-          setValue(name);
-          render();
-        }, render));
-        return;
-      }
       setValue(select.value === '' ? null : select.value);
       render();
     });
@@ -477,28 +465,6 @@ export function createFrontmatterPanel(
       host.appendChild(link);
     }
     return host;
-  };
-
-  const newOptionInput = (relation: Relation, onDone: (name: string) => void, onCancel: () => void): HTMLElement => {
-    const input = document.createElement('input');
-    input.className = 'mdw-fm-value mdw-fm-text';
-    input.placeholder = `New ${relation.folder || 'option'}…`;
-    input.spellcheck = false;
-    let done = false;
-    const finish = (commitValue: boolean) => {
-      if (done) return;
-      done = true;
-      const name = input.value.trim();
-      if (commitValue && name) onDone(name);
-      else onCancel();
-    };
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') finish(true);
-      else if (e.key === 'Escape') finish(false);
-    });
-    input.addEventListener('blur', () => finish(true));
-    requestAnimationFrame(() => input.focus());
-    return input;
   };
 
   const relationPill = (v: string, option: PickerOption | undefined, onRemove: () => void): HTMLElement => {
