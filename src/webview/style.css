@@ -1210,8 +1210,17 @@ body {
   cursor: grabbing;
 }
 .milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-stage {
-  max-width: 100%;
+  width: 100%;
+  display: flex;
+  justify-content: center;
   transform-origin: 0 0;
+}
+/* Fill the available width (mermaid caps the svg at its natural size). */
+.milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-stage svg {
+  width: 100%;
+  height: auto;
+  max-width: none !important;
+  max-height: 70vh;
 }
 .milkdown .milkdown-code-block .preview .mdw-mermaid .mdw-mermaid-hud {
   position: absolute;
