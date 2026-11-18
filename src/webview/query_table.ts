@@ -185,8 +185,8 @@ function renderShell(id: string, inner: string, withMenu = true): HTMLElement {
   el.className = 'mdw-qt';
   el.dataset.qid = id;
   el.innerHTML = inner;
-  if (withMenu && !el.querySelector('.mdw-qt-footer')) {
-    el.insertAdjacentHTML('beforeend', `<div class="mdw-qt-footer">${MENU_HTML}</div>`);
+  if (withMenu) {
+    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-toolbar">${MENU_HTML}</div>`);
   }
   return el;
 }
@@ -246,7 +246,6 @@ function render(id: string, state: BlockState): HTMLElement {
     <div class="mdw-qt-footer">
       <span class="mdw-qt-count">${count}</span>
       ${pager}
-      ${MENU_HTML}
     </div>`
   );
 }
@@ -491,6 +490,10 @@ function onClick(e: MouseEvent): void {
         const editing = !!block?.querySelector('.codemirror-host.hidden');
         block?.querySelector<HTMLElement>('.preview-toggle-button')?.click();
         syncEditToggle(block, editing);
+        // On a long table the editor replaces rows that were above the fold.
+        if (editing && block && block.getBoundingClientRect().top < 0) {
+          block.scrollIntoView({ block: 'start' });
+        }
         break;
       }
       case 'copy-query':

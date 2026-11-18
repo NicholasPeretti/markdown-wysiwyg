@@ -739,19 +739,44 @@ body {
   transition: opacity 0.15s;
 }
 
+/* Actions float at the top right of the table and travel with the sticky
+   header, so they stay reachable on long results. */
+.mdw-qt-toolbar {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  height: 0;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.mdw-qt-toolbar .mdw-qt-actions {
+  pointer-events: auto;
+  height: 23px;
+  margin: 5px 4px 0 0;
+  padding: 0 2px;
+  border-radius: 5px;
+  background: var(--vscode-editor-background);
+  box-shadow: 0 0 0 4px var(--vscode-editor-background);
+}
+
 .mdw-qt:hover .mdw-qt-actions,
 .mdw-qt-editing .mdw-qt-actions,
 .mdw-qt-actions:has(.mdw-qt-menu.open) {
   opacity: 1;
 }
 
-.mdw-qt-footer .mdw-qt-edit {
+.mdw-qt-footer .mdw-qt-edit,
+.mdw-qt-toolbar .mdw-qt-edit {
   display: inline-flex;
   align-items: center;
   padding: 3px 5px;
 }
 
-.mdw-qt-editing .mdw-qt-footer .mdw-qt-edit {
+.mdw-qt-editing .mdw-qt-footer .mdw-qt-edit,
+.mdw-qt-editing .mdw-qt-toolbar .mdw-qt-edit {
   background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
   color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
 }
@@ -788,7 +813,8 @@ body {
   display: flex;
 }
 
-.mdw-qt-footer .mdw-qt-menu-list button {
+.mdw-qt-footer .mdw-qt-menu-list button,
+.mdw-qt-toolbar .mdw-qt-menu-list button {
   color: inherit;
   padding: 5px 10px;
   font-size: 12px;
@@ -796,7 +822,8 @@ body {
   white-space: nowrap;
 }
 
-.mdw-qt-footer .mdw-qt-menu-list button:hover {
+.mdw-qt-footer .mdw-qt-menu-list button:hover,
+.mdw-qt-toolbar .mdw-qt-menu-list button:hover {
   background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
   color: var(--vscode-menu-selectionForeground, inherit);
 }
@@ -812,11 +839,14 @@ body {
 }
 
 .mdw-qt-footer .mdw-qt-count,
-.mdw-qt-footer .mdw-qt-pager {
+.mdw-qt-footer .mdw-qt-pager,
+.mdw-qt-toolbar .mdw-qt-count,
+.mdw-qt-toolbar .mdw-qt-pager {
   opacity: 0.8;
 }
 
-.mdw-qt-footer button {
+.mdw-qt-footer button,
+.mdw-qt-toolbar button {
   all: unset;
   cursor: pointer;
   padding: 2px 5px;
@@ -824,12 +854,14 @@ body {
   color: var(--vscode-descriptionForeground);
 }
 
-.mdw-qt-footer button:hover:not([disabled]) {
+.mdw-qt-footer button:hover:not([disabled]),
+.mdw-qt-toolbar button:hover:not([disabled]) {
   background: var(--vscode-list-hoverBackground);
   color: var(--vscode-editor-foreground);
 }
 
-.mdw-qt-footer button[disabled] {
+.mdw-qt-footer button[disabled],
+.mdw-qt-toolbar button[disabled] {
   opacity: 0.4;
   cursor: default;
 }
