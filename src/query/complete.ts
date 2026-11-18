@@ -50,7 +50,7 @@ const FILE_FIELD_DETAIL: { [k: string]: string } = {
 
 export function complete(line: string, column: number, ctx: CompletionContext): Completions | null {
   const before = line.slice(0, column);
-  const wordMatch = /[\w.\-/*{}?"']*$/.exec(before);
+  const wordMatch = /[\w.\-/*{}?"'$]*$/.exec(before);
   const word = wordMatch ? wordMatch[0] : '';
   const from = column - word.length;
 
@@ -117,7 +117,7 @@ function completeWhere(
   const head = expr.slice(0, expr.length - word.length);
   const tokens =
     head.match(
-      /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\/(?:[^/\\]|\\.)*\/[a-z]*|[<>=!]+|[\w.\-]+|[()]/g
+      /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\/(?:[^/\\]|\\.)*\/[a-z]*|[<>=!]+|[\w.\-$]+|[()]/g
     ) ?? [];
   const last = tokens[tokens.length - 1];
   const prev = tokens[tokens.length - 2];
@@ -126,7 +126,8 @@ function completeWhere(
   const isConnector = (t: string | undefined) =>
     t === undefined || ['and', 'or', 'not', '('].includes(t.toLowerCase());
   const isOperator = (t: string | undefined) =>
-    t !== undefined && OPERATORS.some((o) => o.toLowerCase() === t.toLowerCase());
+    t !== undefined &&
+    (t.toLowerCase() === 'includes' || OPERATORS.some((o) => o.toLowerCase() === t.toLowerCase()));
   const connectors: CompletionItem[] = [
     { label: 'and', kind: 'keyword' },
     { label: 'or', kind: 'keyword' },
@@ -151,6 +152,13 @@ function completeWhere(
   // After an operator: values for that field.
   if (isOperator(last) && isField(prev)) {
     const field = prev as string;
+    // `$.field`: the current file's own frontmatter value.
+    if (word.startsWith('$')) {
+      return {
+        from,
+        items: ctx.fields.map((f) => ({ label: `$.${f}`, kind: 'value', detail: 'this file' })),
+      };
+    }
     const quoted = word.startsWith('"') || word.startsWith("'");
     const items: CompletionItem[] = [];
     for (const v of ctx.values[field] ?? []) {
@@ -177,6 +185,10 @@ function completeWhere(
         { label: 'now - 30d', kind: 'keyword' }
       );
     }
+    if (!quoted && !field.startsWith('file.')) {
+      const self = field.startsWith('fm.') ? field.slice(3) : field;
+      items.push({ label: `$.${self}`, kind: 'value', detail: 'this file' });
+    }
     return items.length ? { from: quoted ? from + 1 : from, items } : null;
   }
 
@@ -192,5 +204,5 @@ function isField(t: string | undefined): boolean {
 }
 
 function isLiteral(t: string | undefined): boolean {
-  return t !== undefined && (/^["'/]/.test(t) || /^(true|false|null|today|now|\d)/.test(t));
+  return t !== undefined && (/^["'/$]/.test(t) || /^(true|false|null|today|now|\d)/.test(t));
 }

@@ -16,7 +16,7 @@ import type { SlashMenuBuilder } from './callouts';
 import type { Ctx } from '@milkdown/kit/ctx';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { complete, type CompletionContext } from '../query/complete';
-import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, withSort, type SortDir } from '../query/lang';
+import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, usesSelf, withSort, type SortDir } from '../query/lang';
 import type { Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
 import { fetchOptions } from './relation_options';
@@ -52,6 +52,8 @@ interface BlockState {
 interface Host {
   post(message: unknown): void;
   ctx(): Ctx | undefined;
+  /** Raw frontmatter of the current document, for `$.field` references. */
+  frontmatter(): string | null;
 }
 
 const blocks = new Map<string, BlockState>();
@@ -97,6 +99,14 @@ export function renderQueryPreview(
 /** Re-runs every rendered query; called when the host index changes. */
 export function refreshQueryTables(): void {
   for (const id of blocks.keys()) run(id);
+}
+
+/** Re-runs the queries that read the current file's frontmatter via `$.field`. */
+export function refreshSelfQueries(): void {
+  for (const [id, state] of blocks) {
+    const { query } = parseQuery(state.text);
+    if (query.where.some(usesSelf)) run(id);
+  }
 }
 
 export function handleQueryMessage(message: { type: string; id?: string } & { [k: string]: unknown }): boolean {
@@ -162,7 +172,7 @@ function run(id: string): void {
   }
   const reqId = `q${++seq}`;
   pending.set(reqId, id);
-  host.post({ type: 'query', id: reqId, text: state.text });
+  host.post({ type: 'query', id: reqId, text: state.text, frontmatter: host.frontmatter() });
 }
 
 function blockId(text: string): string {
@@ -727,6 +737,7 @@ const queryStream = StreamLanguage.define<{ key: string | null }>({
     if (stream.match(/^"(?:[^"\\]|\\.)*"?/) || stream.match(/^'(?:[^'\\]|\\.)*'?/)) return 'string';
     if (stream.match(/^\/(?:[^/\\]|\\.)*\/[a-z]*/)) return 'regexp';
     if (stream.match(/^(==|!=|<=|>=|<|>)/)) return 'operator';
+    if (stream.match(/^\$\.[A-Za-z_][\w.-]*/)) return 'variableName.special';
     if (stream.match(/^\d{4}-\d{2}-\d{2}/)) return 'number';
     if (stream.match(/^\d+(\.\d+)?[dwmy]?\b/)) return 'number';
     const word = stream.match(/^[A-Za-z_][\w.-]*/) as RegExpMatchArray | null;
@@ -734,7 +745,7 @@ const queryStream = StreamLanguage.define<{ key: string | null }>({
       const w = word[0];
       const lower = w.toLowerCase();
       if (KEYWORDS.has(lower)) return 'keyword';
-      if (OPERATORS.some((o) => o.toLowerCase() === lower)) return 'operator';
+      if (lower === 'includes' || OPERATORS.some((o) => o.toLowerCase() === lower)) return 'operator';
       if ((FILE_FIELDS as readonly string[]).includes(w)) return 'variableName.special';
       return 'variableName';
     }

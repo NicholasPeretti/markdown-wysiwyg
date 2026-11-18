@@ -90,6 +90,25 @@ export class FileIndex implements vscode.Disposable {
     return this.entries.get(relPath);
   }
 
+  /**
+   * The record for an open document, using `frontmatterText` (the unsaved
+   * frontmatter from the editor) in place of what is on disk.
+   */
+  selfRecord(uri: vscode.Uri, frontmatterText?: string | null): FileRecord {
+    const rel = this.relative(uri);
+    const indexed = this.entries.get(rel);
+    const file = indexed?.file ?? {
+      path: rel,
+      name: path.basename(rel, path.extname(rel)),
+      folder: path.posix.dirname(rel) === '.' ? '' : path.posix.dirname(rel),
+      modified: 0,
+      created: 0,
+      size: 0,
+    };
+    const fm = typeof frontmatterText === 'string' ? parseYaml(frontmatterText) : indexed?.fm ?? {};
+    return { file, fm };
+  }
+
   completionContext(): CompletionContext {
     const fields = new Set<string>();
     const values = new Map<string, Set<string>>();
@@ -226,7 +245,8 @@ function parseYaml(text: string): { [k: string]: unknown } {
 export function runQuery(
   text: string,
   records: FileRecord[],
-  source?: RelationSource
+  source?: RelationSource,
+  self?: FileRecord
 ): QueryResult | { error: string } {
   const { query, errors } = parseQuery(text);
   if (errors.length) {
@@ -234,7 +254,7 @@ export function runQuery(
   }
   const matches = fromMatcher(query.from);
   const filtered = records.filter(
-    (r) => matches(r.file.path) && query.where.every((e) => evaluate(e, r))
+    (r) => matches(r.file.path) && query.where.every((e) => evaluate(e, r, self))
   );
   if (query.distinct) return runDistinct(query, filtered);
 

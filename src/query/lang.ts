@@ -50,7 +50,9 @@ export type Literal =
   | { kind: 'bool'; value: boolean }
   | { kind: 'null' }
   | { kind: 'regex'; source: string; flags: string }
-  | { kind: 'date'; ms: number };
+  | { kind: 'date'; ms: number }
+  /** `$.field`: the value of the current file's own frontmatter field. */
+  | { kind: 'ref'; field: string };
 
 export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page', 'group', 'distinct'] as const;
 export const OPERATORS: CmpOp[] = [
@@ -233,6 +235,7 @@ type Token =
   | { t: 'regex'; source: string; flags: string; pos: number }
   | { t: 'lparen'; pos: number }
   | { t: 'rparen'; pos: number }
+  | { t: 'ref'; v: string; pos: number }
   | { t: 'eof'; pos: number };
 
 function tokenize(src: string): Token[] {
@@ -303,6 +306,13 @@ function tokenize(src: string): Token[] {
     }
     if (c === '=') throw new Error(`Unexpected "=" at column ${pos + 1}. Did you mean "=="?`);
     const rest = src.slice(i);
+    if (c === '$') {
+      const ref = /^\$\.([A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*)*)/.exec(rest);
+      if (!ref) throw new Error(`Expected a field after "$." at column ${pos + 1}`);
+      tokens.push({ t: 'ref', v: ref[1], pos });
+      i += ref[0].length;
+      continue;
+    }
     const num = /^\d+(\.\d+)?(?![\w-])/.exec(rest);
     if (num) {
       tokens.push({ t: 'number', v: Number(num[0]), pos });
@@ -376,8 +386,10 @@ export function parseExpr(src: string): Expr {
     let op: CmpOp | undefined;
     if (opTok.t === 'op' && OPERATORS.includes(opTok.v as CmpOp)) op = opTok.v as CmpOp;
     if (opTok.t === 'ident') {
-      const found = OPERATORS.find((o) => o.toLowerCase() === opTok.v.toLowerCase());
+      const word = opTok.v.toLowerCase();
+      const found = OPERATORS.find((o) => o.toLowerCase() === word);
       if (found) op = found;
+      else if (word === 'includes') op = 'contains';
     }
     if (!op) throw new Error(`Expected an operator after "${field}" at column ${opTok.pos + 1}`);
     next();
@@ -393,6 +405,8 @@ export function parseExpr(src: string): Expr {
         return { kind: 'number', value: t.v };
       case 'regex':
         return { kind: 'regex', source: t.source, flags: t.flags };
+      case 'ref':
+        return { kind: 'ref', field: t.v };
       case 'ident': {
         const lower = t.v.toLowerCase();
         if (lower === 'true' || lower === 'false') return { kind: 'bool', value: lower === 'true' };
@@ -439,6 +453,8 @@ function describe(t: Token): string {
       return String(t.v);
     case 'regex':
       return `/${t.source}/`;
+    case 'ref':
+      return `$.${t.v}`;
     case 'lparen':
       return '(';
     case 'rparen':
@@ -510,25 +526,65 @@ export function resolveField(record: FileRecord, field: string): unknown {
   return cur;
 }
 
-export function evaluate(expr: Expr, record: FileRecord): boolean {
+/**
+ * Evaluates `expr` against `record`. `self` is the file containing the query;
+ * `$.field` literals read from it and match when any of its values match.
+ */
+export function evaluate(expr: Expr, record: FileRecord, self?: FileRecord): boolean {
   switch (expr.type) {
     case 'and':
-      return expr.items.every((e) => evaluate(e, record));
+      return expr.items.every((e) => evaluate(e, record, self));
     case 'or':
-      return expr.items.some((e) => evaluate(e, record));
+      return expr.items.some((e) => evaluate(e, record, self));
     case 'not':
-      return !evaluate(expr.item, record);
+      return !evaluate(expr.item, record, self);
     case 'exists': {
       const v = resolveField(record, expr.field);
       return v !== undefined && v !== null;
     }
-    case 'cmp':
-      return compare(resolveField(record, expr.field), expr.op, expr.value);
+    case 'cmp': {
+      const actual = resolveField(record, expr.field);
+      if (expr.value.kind !== 'ref') return compare(actual, expr.op, expr.value);
+      const lits = refLiterals(self ? resolveField(self, expr.value.field) : undefined);
+      // `!=` against a set means "none of them"; everything else means "any of them".
+      return expr.op === '!='
+        ? lits.every((l) => compare(actual, expr.op, l))
+        : lits.some((l) => compare(actual, expr.op, l));
+    }
   }
 }
 
+/** Whether the expression reads the current file via `$.field`. */
+export function usesSelf(expr: Expr): boolean {
+  switch (expr.type) {
+    case 'and':
+    case 'or':
+      return expr.items.some(usesSelf);
+    case 'not':
+      return usesSelf(expr.item);
+    case 'exists':
+      return false;
+    case 'cmp':
+      return expr.value.kind === 'ref';
+  }
+}
+
+/** Converts a frontmatter value into the literal(s) a `$.field` reference stands for. */
+function refLiterals(v: unknown): Exclude<Literal, { kind: 'ref' }>[] {
+  const one = (x: unknown): Exclude<Literal, { kind: 'ref' }> => {
+    if (x === undefined || x === null) return { kind: 'null' };
+    if (typeof x === 'number') return { kind: 'number', value: x };
+    if (typeof x === 'boolean') return { kind: 'bool', value: x };
+    if (x instanceof Date) return { kind: 'date', ms: x.getTime() };
+    if (typeof x === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(x)) return { kind: 'date', ms: localDate(x) };
+    return { kind: 'string', value: typeof x === 'string' ? x : String(x) };
+  };
+  if (Array.isArray(v)) return v.length ? v.map(one) : [{ kind: 'null' }];
+  return [one(v)];
+}
+
 /** Notion semantics: a missing field is "empty" — `!=` is true, everything else false. */
-function compare(actual: unknown, op: CmpOp, lit: Literal): boolean {
+function compare(actual: unknown, op: CmpOp, lit: Exclude<Literal, { kind: 'ref' }>): boolean {
   const missing = actual === undefined || actual === null;
   if (lit.kind === 'null') return op === '==' ? missing : op === '!=' ? !missing : false;
   if (missing) return op === '!=';

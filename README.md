@@ -44,7 +44,7 @@ columns: file.name, title, status, file.modified
 | Key | Meaning |
 | --- | --- |
 | `from` | Folder (recursive) or glob, relative to the workspace folder. Default: whole workspace. |
-| `where` | Filter expression; repeat the line to AND several. Operators: `==` `!=` `<` `<=` `>` `>=` `contains` `startsWith` `endsWith` `matches` `exists`, combined with `and` / `or` / `not` and parentheses. |
+| `where` | Filter expression; repeat the line to AND several. Operators: `==` `!=` `<` `<=` `>` `>=` `contains` (alias `includes`) `startsWith` `endsWith` `matches` `exists`, combined with `and` / `or` / `not` and parentheses. |
 | `sort` | `<field> asc|desc`. Default: `file.modified desc`. Click a column header to change it. |
 | `limit` | Max rows (default 50). |
 | `page` | Page size; shows a pager in the table header. |
@@ -53,6 +53,13 @@ columns: file.name, title, status, file.modified
 | `distinct` | List the unique values of this field with a file count instead of files (columns `<field>`, `count`). Default sort: `count desc`; `limit` caps the number of values. Cannot be combined with `group`. |
 
 Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Missing fields compare like Notion: `!=` is true, everything else is false.
+
+`$.field` stands for the current file's own frontmatter value, so a query can follow the file it lives in. If the value is a list, a clause matches when any item does (`!=` when none does). Results update live as you edit the properties panel.
+
+```query
+from: tasks
+where: tags includes $.name
+```
 
 - **Cmd/Ctrl+click** a row to open the file.
 - **Double-click** a cell to edit it in place: frontmatter fields are rewritten in the target file (comments and formatting preserved; booleans toggle, arrays take `a, b, c`, an empty value removes the field) and `file.name` renames the file. Open files are edited in their buffer and saved unless they already had unsaved changes.
@@ -91,7 +98,7 @@ Declared fields appear in the properties panel even when the file doesn't have t
 - **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown of the existing options. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
 - **Query tables** — relation cells render as pills; double-click opens the picker and writes the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
 
-Since relations are plain frontmatter, put them in your templates so every new file gets them.
+Since relations are plain frontmatter, put them in your templates so every new file gets them. The option file can list its users with a `$.field` query, e.g. `where: tags includes $.name` in `tags/urgent.md`.
 
 ## Development
 

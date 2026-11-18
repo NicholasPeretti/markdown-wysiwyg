@@ -272,7 +272,9 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
             break;
           }
           await index.ensure();
-          const result = runQuery(String(message.text), index.records(), index);
+          const fmText = typeof message.frontmatter === 'string' ? message.frontmatter : null;
+          const self = index.selfRecord(document.uri, fmText);
+          const result = runQuery(String(message.text), index.records(), index, self);
           if ('error' in result) {
             webviewPanel.webview.postMessage({ type: 'queryError', id: message.id, message: result.error });
           } else {

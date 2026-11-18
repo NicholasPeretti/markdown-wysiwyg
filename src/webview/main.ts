@@ -11,6 +11,7 @@ import {
   handleQueryMessage,
   installQueryTables,
   queryLanguage,
+  refreshSelfQueries,
   renderQueryPreview,
   addQuerySlashItem,
 } from './query_table';
@@ -75,10 +76,17 @@ async function createEditor(initial: string): Promise<void> {
   const fmHost = document.createElement('div');
   fmHost.id = 'frontmatter-host';
   root.before(fmHost);
-  frontmatterPanel = createFrontmatterPanel(fmHost, sendEdit, {
-    openFile: (path) => vscode.postMessage({ type: 'openFile', path }),
-    createOption: (relation, name) => vscode.postMessage({ type: 'createOption', relation, name }),
-  });
+  frontmatterPanel = createFrontmatterPanel(
+    fmHost,
+    () => {
+      sendEdit();
+      refreshSelfQueries();
+    },
+    {
+      openFile: (path) => vscode.postMessage({ type: 'openFile', path }),
+      createOption: (relation, name) => vscode.postMessage({ type: 'createOption', relation, name }),
+    }
+  );
   frontmatterPanel.set(fm);
 
   crepe = new Crepe({
@@ -185,7 +193,10 @@ window.addEventListener('message', async (event) => {
   }
 
   const { fm, body } = splitFrontmatter(text);
-  frontmatterPanel?.set(fm);
+  if (fm !== frontmatterPanel?.get()) {
+    frontmatterPanel?.set(fm);
+    refreshSelfQueries();
+  }
 
   if (body !== editorMarkdown()) {
     armSwallow();
@@ -201,6 +212,7 @@ installFind(() => crepe?.editor.ctx);
 installQueryTables({
   post: (message) => vscode.postMessage(message),
   ctx: () => crepe?.editor.ctx,
+  frontmatter: () => frontmatterPanel?.get() ?? null,
 });
 
 vscode.postMessage({ type: 'ready' });
