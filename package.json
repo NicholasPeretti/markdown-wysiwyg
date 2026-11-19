@@ -34,6 +34,39 @@
     ],
     "commands": [
       {
+        "command": "markdownWysiwyg.searchViewAsTree",
+        "title": "View as Tree",
+        "icon": "$(list-tree)"
+      },
+      {
+        "command": "markdownWysiwyg.searchViewAsList",
+        "title": "View as List",
+        "icon": "$(list-flat)"
+      },
+      {
+        "command": "markdownWysiwyg.searchCollapseAll",
+        "title": "Collapse All",
+        "icon": "$(collapse-all)"
+      },
+      {
+        "command": "markdownWysiwyg.searchExpandAll",
+        "title": "Expand All",
+        "icon": "$(expand-all)"
+      },
+      {
+        "command": "markdownWysiwyg.searchClear",
+        "title": "Clear Search Results",
+        "icon": "$(clear-all)"
+      },
+      {
+        "command": "markdownWysiwyg.searchNext",
+        "title": "Markdown: Go to Next Search Result"
+      },
+      {
+        "command": "markdownWysiwyg.searchPrevious",
+        "title": "Markdown: Go to Previous Search Result"
+      },
+      {
         "command": "markdownWysiwyg.openWysiwyg",
         "title": "Markdown: Open in WYSIWYG Mode",
         "icon": "$(book)"
@@ -94,9 +127,46 @@
         "command": "markdownWysiwyg.search",
         "key": "ctrl+shift+alt+f",
         "mac": "shift+alt+cmd+f"
+      },
+      {
+        "command": "markdownWysiwyg.searchNext",
+        "key": "f4",
+        "when": "markdownWysiwyg.hasSearchResults && !searchViewletVisible"
+      },
+      {
+        "command": "markdownWysiwyg.searchPrevious",
+        "key": "shift+f4",
+        "when": "markdownWysiwyg.hasSearchResults && !searchViewletVisible"
       }
     ],
     "menus": {
+      "view/title": [
+        {
+          "command": "markdownWysiwyg.searchViewAsTree",
+          "when": "view == markdownWysiwyg.searchView && !markdownWysiwyg.searchTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "markdownWysiwyg.searchViewAsList",
+          "when": "view == markdownWysiwyg.searchView && markdownWysiwyg.searchTree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "markdownWysiwyg.searchCollapseAll",
+          "when": "view == markdownWysiwyg.searchView && !markdownWysiwyg.searchCollapsed",
+          "group": "navigation@2"
+        },
+        {
+          "command": "markdownWysiwyg.searchExpandAll",
+          "when": "view == markdownWysiwyg.searchView && markdownWysiwyg.searchCollapsed",
+          "group": "navigation@2"
+        },
+        {
+          "command": "markdownWysiwyg.searchClear",
+          "when": "view == markdownWysiwyg.searchView",
+          "group": "navigation@3"
+        }
+      ],
       "editor/title": [
         {
           "command": "markdownWysiwyg.openWysiwyg",
@@ -110,6 +180,11 @@
         }
       ],
       "commandPalette": [
+        { "command": "markdownWysiwyg.searchViewAsTree", "when": "false" },
+        { "command": "markdownWysiwyg.searchViewAsList", "when": "false" },
+        { "command": "markdownWysiwyg.searchCollapseAll", "when": "false" },
+        { "command": "markdownWysiwyg.searchExpandAll", "when": "false" },
+        { "command": "markdownWysiwyg.searchClear", "when": "false" },
         {
           "command": "markdownWysiwyg.openWysiwyg",
           "when": "resourceLangId == markdown"

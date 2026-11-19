@@ -9,6 +9,11 @@ import { SearchViewProvider, SEARCH_VIEW_ID, type OpenRequest } from './search_v
 const VIEW_TYPE = 'markdownWysiwyg.editor';
 
 export function activate(context: vscode.ExtensionContext) {
+  searchView = new SearchViewProvider(
+    context.globalState,
+    () => (vscode.workspace.workspaceFolders ?? []).map((f) => indexFor(f.uri)!),
+    openSearchResult
+  );
   context.subscriptions.push(
     vscode.window.registerCustomEditorProvider(
       VIEW_TYPE,
@@ -108,10 +113,7 @@ function indexFor(uri: vscode.Uri): FileIndex | undefined {
   return index;
 }
 
-const searchView = new SearchViewProvider(
-  () => (vscode.workspace.workspaceFolders ?? []).map((f) => indexFor(f.uri)!),
-  openSearchResult
-);
+let searchView: SearchViewProvider;
 
 /** Opens a search hit: the source at its line, or the WYSIWYG editor with the query highlighted. */
 async function openSearchResult(req: OpenRequest): Promise<void> {
@@ -119,7 +121,7 @@ async function openSearchResult(req: OpenRequest): Promise<void> {
   if (req.source) {
     codeModeUris.add(key);
     const doc = await vscode.workspace.openTextDocument(req.uri);
-    const editor = await vscode.window.showTextDocument(doc, { preview: true });
+    const editor = await vscode.window.showTextDocument(doc, { preview: true, preserveFocus: req.preserveFocus });
     const pos = new vscode.Position(Math.min(req.line ?? 0, doc.lineCount - 1), 0);
     editor.selection = new vscode.Selection(pos, pos);
     editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
@@ -129,12 +131,15 @@ async function openSearchResult(req: OpenRequest): Promise<void> {
   const find = { type: 'find', query: req.query, terms: req.terms, anchor: req.anchor };
   const panel = panels.get(key);
   if (panel) {
-    panel.reveal(undefined, false);
+    panel.reveal(undefined, req.preserveFocus);
     panel.webview.postMessage(find);
     return;
   }
   pendingFind.set(key, find);
-  await vscode.commands.executeCommand('vscode.openWith', req.uri, VIEW_TYPE, { preview: true });
+  await vscode.commands.executeCommand('vscode.openWith', req.uri, VIEW_TYPE, {
+    preview: true,
+    preserveFocus: req.preserveFocus,
+  });
 }
 
 /** Completions inside ```query fences of a plain-text Markdown editor. */

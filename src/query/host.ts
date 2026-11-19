@@ -27,6 +27,9 @@ import { SearchIndex, matchLines, type MatchLine } from './search';
 const HEAD_BYTES = 4096;
 const MAX_HEAD_BYTES = 64 * 1024;
 /** Files larger than this are indexed by frontmatter only, not full text. */
+/** Matching lines reported per file in search results. */
+const MAX_MATCH_LINES = 8;
+
 const MAX_TEXT_BYTES = 1024 * 1024;
 
 export type Cell =
@@ -61,7 +64,10 @@ export interface SearchResult {
   title?: string;
   folder: string;
   score: number;
+  /** Best matching lines, document order. */
   matches: MatchLine[];
+  /** Total number of matching lines. */
+  matchCount: number;
 }
 
 export class FileIndex implements vscode.Disposable {
@@ -157,7 +163,7 @@ export class FileIndex implements vscode.Disposable {
         title,
         folder: rec.file.folder,
         score,
-        matches: this.bodyMatches(id, groups),
+        ...this.bodyMatches(id, groups),
       };
     });
   }
@@ -258,10 +264,15 @@ export class FileIndex implements vscode.Disposable {
     if (changed) this.emitChange();
   }
 
-  private bodyMatches(rel: string, groups: string[][]): MatchLine[] {
+  private bodyMatches(rel: string, groups: string[][]): { matches: MatchLine[]; matchCount: number } {
     const entry = this.texts.get(rel);
-    if (!entry) return [];
-    return matchLines(entry.body, groups).map((m) => ({ ...m, line: m.line + entry.line }));
+    if (!entry) return { matches: [], matchCount: 0 };
+    const all = matchLines(entry.body, groups, Infinity);
+    const matches = all
+      .slice(0, MAX_MATCH_LINES)
+      .sort((a, b) => a.line - b.line)
+      .map((m) => ({ ...m, line: m.line + entry.line }));
+    return { matches, matchCount: all.length };
   }
 
   private drop(rel: string): boolean {
