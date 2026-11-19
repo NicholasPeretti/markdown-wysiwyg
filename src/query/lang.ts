@@ -812,3 +812,85 @@ export function globToRegExp(glob: string): RegExp {
   }
   return new RegExp(re + '$');
 }
+
+// ---------------------------------------------------------------------------
+// New files from a table
+
+/**
+ * The folder a file created from this query should go in: `from` when it is
+ * a plain folder path (`''` for the root), `undefined` when `from` is a glob
+ * or the query lists values rather than files. `null` means "no `from`" —
+ * the caller falls back to the folder of the file holding the query.
+ */
+export function newFileFolder(query: Query): string | undefined | null {
+  if (query.distinct) return undefined;
+  if (!query.from) return null;
+  const folder = query.from.replace(/\\/g, '/').replace(/^\.?\//, '').replace(/\/$/, '');
+  if (GLOB_CHARS.test(folder) || folder.split('/').some((p) => p === '..')) return undefined;
+  return folder;
+}
+
+/**
+ * Frontmatter a new file needs so the query matches it: every `field == x`
+ * and `field contains x` (as a one-item list) term that applies to all
+ * rows — top-level `where` lines and the branches of their `and`s. `$.field`
+ * references resolve against `self`.
+ */
+export function seedValues(query: Query, self?: FileRecord): Map<string, unknown> {
+  const out = new Map<string, unknown>();
+  const visit = (e: Expr) => {
+    if (e.type === 'and') {
+      e.items.forEach(visit);
+      return;
+    }
+    if (e.type !== 'cmp' || e.field.startsWith('file.') || out.has(e.field)) return;
+    if (e.op !== '==' && e.op !== 'contains') return;
+    let value: unknown;
+    const lit = e.value;
+    switch (lit.kind) {
+      case 'string':
+        value = lit.value;
+        break;
+      case 'number':
+      case 'bool':
+        value = lit.value;
+        break;
+      case 'date':
+        value = isoDate(lit.ms);
+        break;
+      case 'ref': {
+        const v = self ? resolveField(self, lit.field) : undefined;
+        value = Array.isArray(v) ? v[0] : v instanceof Date ? isoDate(v.getTime()) : v;
+        break;
+      }
+      default:
+        return;
+    }
+    if (value === undefined || value === null || value === '') return;
+    out.set(e.field.replace(/^fm\./, ''), e.op === 'contains' ? [value] : value);
+  };
+  query.where.forEach(visit);
+  return out;
+}
+
+const INVALID_NAME_CHARS = /[\\/:*?"<>|]/;
+
+/** Validates a file name the way the explorer does; returns the problem or `undefined`. */
+export function validateName(name: string, existing: string[]): string | undefined {
+  const trimmed = name.trim();
+  if (!trimmed) return 'A file name must be provided.';
+  if (INVALID_NAME_CHARS.test(trimmed)) return 'The name contains invalid characters (\\ / : * ? " < > |).';
+  if (trimmed === '.' || trimmed === '..') return `The name "${trimmed}" is not valid.`;
+  const stem = trimmed.replace(/\.md$/i, '');
+  const lower = stem.toLowerCase();
+  if (existing.some((n) => n.toLowerCase() === lower)) {
+    return `A file "${stem}.md" already exists at this location.`;
+  }
+  return undefined;
+}
+
+function isoDate(ms: number): string {
+  const d = new Date(ms);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}

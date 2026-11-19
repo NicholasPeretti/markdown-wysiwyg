@@ -16,7 +16,17 @@ import type { SlashMenuBuilder } from './callouts';
 import type { Ctx } from '@milkdown/kit/ctx';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { complete, type CompletionContext } from '../query/complete';
-import { FILE_FIELDS, OPERATORS, QUERY_KEYS, parseQuery, usesSelf, withSort, type SortDir } from '../query/lang';
+import {
+  FILE_FIELDS,
+  OPERATORS,
+  QUERY_KEYS,
+  newFileFolder,
+  parseQuery,
+  usesSelf,
+  validateName,
+  withSort,
+  type SortDir,
+} from '../query/lang';
 import type { Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
 import { fetchOptions } from './relation_options';
@@ -49,6 +59,8 @@ interface BlockState {
   search: string;
   /** Group labels the user has folded. */
   collapsed: Set<string>;
+  /** Path of a row to highlight on the next render (a file just created). */
+  focusPath?: string;
   apply: (el: HTMLElement) => void;
 }
 
@@ -135,6 +147,7 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
         deferredRender.add(blockIdFor);
       } else {
         state.apply(render(blockIdFor, state));
+        if (state.focusPath) revealFocusedRow(blockIdFor, state);
       }
       return true;
     }
@@ -161,8 +174,71 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
     case 'queryRefresh':
       refreshQueryTables();
       return true;
+    case 'newFileContextResult': {
+      const resolve = newFileWaiters.get(message.id as string);
+      newFileWaiters.delete(message.id as string);
+      resolve?.(message.folder === null ? undefined : { folder: String(message.folder), names: message.names as string[] });
+      return true;
+    }
+    case 'fileCreated': {
+      const blockIdFor = pending.get(message.id as string);
+      pending.delete(message.id as string);
+      const state = blockIdFor ? blocks.get(blockIdFor) : undefined;
+      if (!state || !blockIdFor) return true;
+      if (typeof message.error === 'string') {
+        showNewFileError(blockIdFor, message.error);
+      } else {
+        state.focusPath = String(message.path);
+        run(blockIdFor);
+      }
+      return true;
+    }
   }
   return false;
+}
+
+/** Scrolls to the row just created and clears the highlight once it has been seen. */
+function revealFocusedRow(id: string, state: BlockState): void {
+  const path = state.focusPath;
+  if (!path) return;
+  requestAnimationFrame(() => {
+    const row = document.querySelector<HTMLElement>(`.mdw-qt[data-qid="${id}"] tr.mdw-qt-focus`);
+    if (!row) {
+      // Not in the results (yet): keep waiting for the index to catch up, but not forever.
+      focusAttempts.set(id, (focusAttempts.get(id) ?? 0) + 1);
+      if ((focusAttempts.get(id) ?? 0) > 3) {
+        focusAttempts.delete(id);
+        state.focusPath = undefined;
+      }
+      return;
+    }
+    focusAttempts.delete(id);
+    row.scrollIntoView({ block: 'nearest' });
+    setTimeout(() => {
+      if (state.focusPath === path) {
+        state.focusPath = undefined;
+        row.classList.remove('mdw-qt-focus');
+      }
+    }, 2500);
+  });
+}
+
+const focusAttempts = new Map<string, number>();
+
+interface NewFileContext {
+  folder: string;
+  names: string[];
+}
+
+const newFileWaiters = new Map<string, (c: NewFileContext | undefined) => void>();
+
+function fetchNewFileContext(text: string): Promise<NewFileContext | undefined> {
+  return new Promise((resolve) => {
+    if (!host) return resolve(undefined);
+    const id = `n${++seq}`;
+    newFileWaiters.set(id, resolve);
+    host.post({ type: 'newFileContext', id, text });
+  });
 }
 
 function run(id: string): void {
@@ -260,7 +336,9 @@ function render(id: string, state: BlockState): HTMLElement {
     .join('');
 
   const renderRow = (row: Result['rows'][number]) =>
-    `<tr${row.path ? ` data-path="${escapeAttr(row.path)}"` : ''}>${row.cells
+    `<tr${row.path ? ` data-path="${escapeAttr(row.path)}"` : ''}${
+      row.path && row.path === state.focusPath ? ' class="mdw-qt-focus"' : ''
+    }>${row.cells
       .map((cell, i) => {
         const mode = row.path ? editMode(result.columns[i], cell) : null;
         const hint = mode === 'field' || mode === 'rename' ? ' title="Double-click to edit"' : '';
@@ -295,6 +373,12 @@ function render(id: string, state: BlockState): HTMLElement {
   } else {
     body = rows.length ? `<tbody>${rows.map(renderRow).join('')}</tbody>` : empty;
   }
+  // Notion-style "+ New" row, only where a created file would land somewhere obvious.
+  if (newFileFolder(query) !== undefined && !state.search.trim()) {
+    body += `<tbody class="mdw-qt-new"><tr><td colspan="${result.columns.length}">
+      <button data-act="new-file" class="mdw-qt-new-btn" title="Create a new file matching this query">${PLUS_ICON}<span>New</span></button>
+    </td></tr></tbody>`;
+  }
 
   return renderShell(
     id,
@@ -307,6 +391,9 @@ function render(id: string, state: BlockState): HTMLElement {
     filter
   );
 }
+
+const PLUS_ICON =
+  '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M7.75 2a.75.75 0 0 1 .75.75V7h4.25a.75.75 0 0 1 0 1.5H8.5v4.25a.75.75 0 0 1-1.5 0V8.5H2.75a.75.75 0 0 1 0-1.5H7V2.75A.75.75 0 0 1 7.75 2Z"/></svg>';
 
 const FILTER_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M10.68 11.74a6 6 0 0 1-7.922-8.982 6 6 0 0 1 8.982 7.922l3.04 3.04a.749.749 0 0 1-.326 1.275.749.749 0 0 1-.734-.215ZM11.5 7a4.499 4.499 0 1 0-8.997 0A4.499 4.499 0 0 0 11.5 7Z"/></svg>';
@@ -711,6 +798,108 @@ function beginEdit(
   input.select();
 }
 
+/**
+ * Turns the "+ New" row into a name input. Like the explorer, the name is
+ * validated as you type and the file is only created on Enter.
+ */
+function beginNewFile(root: HTMLElement, state: BlockState): void {
+  const id = root.dataset.qid!;
+  const td = root.querySelector<HTMLElement>('.mdw-qt-new td');
+  if (!td || !state.result) return;
+  editingBlock = id;
+  td.innerHTML = '';
+  td.classList.add('mdw-qt-new-editing');
+  const wrap = document.createElement('div');
+  wrap.className = 'mdw-qt-new-form';
+  const input = document.createElement('input');
+  input.className = 'mdw-qt-input';
+  input.type = 'text';
+  input.spellcheck = false;
+  input.placeholder = 'File name';
+  input.setAttribute('aria-label', 'New file name');
+  const error = document.createElement('div');
+  error.className = 'mdw-qt-new-error';
+  error.hidden = true;
+  wrap.append(input, error);
+  td.appendChild(wrap);
+
+  let context: NewFileContext | undefined;
+  let names: string[] = [];
+  let loaded = false;
+  void fetchNewFileContext(state.text).then((c) => {
+    loaded = true;
+    context = c;
+    names = c?.names ?? [];
+    if (!c) {
+      input.disabled = true;
+      setError('This query cannot create files.');
+    } else {
+      input.placeholder = c.folder ? `File name (in ${c.folder}/)` : 'File name';
+      validate();
+    }
+  });
+
+  const setError = (msg: string | undefined) => {
+    error.textContent = msg ?? '';
+    error.hidden = !msg;
+    wrap.classList.toggle('mdw-qt-invalid', !!msg);
+  };
+  // Blank is only an error once the user has typed something.
+  let touched = false;
+  const validate = (): string | undefined => {
+    const problem = validateName(input.value, names);
+    setError(touched || input.value ? problem : undefined);
+    return problem;
+  };
+
+  let done = false;
+  const finish = (commit: boolean) => {
+    if (done) return;
+    done = true;
+    editingBlock = undefined;
+    const value = input.value.trim();
+    if (commit && loaded && context && value && !validateName(value, names)) {
+      const reqId = `f${++seq}`;
+      pending.set(reqId, id);
+      host?.post({ type: 'createFile', id: reqId, text: state.text, name: value, frontmatter: host.frontmatter() });
+      td.classList.remove('mdw-qt-new-editing');
+      td.innerHTML = `<span class="mdw-qt-status">Creating ${escapeHtml(value)}.md…</span>`;
+    } else {
+      replaceContent(root, render(id, state));
+    }
+    if (deferredRender.delete(id)) state.apply(render(id, state));
+  };
+
+  isolateInput(input);
+  input.addEventListener('input', () => {
+    touched = true;
+    validate();
+  });
+  input.addEventListener('keydown', (ev) => {
+    if (ev.key === 'Enter') {
+      ev.preventDefault();
+      touched = true;
+      if (!validate()) finish(true);
+    } else if (ev.key === 'Escape') {
+      ev.preventDefault();
+      finish(false);
+    }
+  });
+  // Clicking away commits a valid name and drops an invalid one, like the explorer.
+  input.addEventListener('blur', () => (validateName(input.value, names) ? finish(false) : finish(true)));
+  input.focus();
+}
+
+/** Shows a creation failure in the "+ New" row until the next render. */
+function showNewFileError(id: string, message: string): void {
+  const state = blocks.get(id);
+  const root = document.querySelector<HTMLElement>(`.mdw-qt[data-qid="${id}"]`);
+  if (!state || !root) return;
+  replaceContent(root, render(id, state));
+  const td = root.querySelector<HTMLElement>('.mdw-qt-new td');
+  if (td) td.insertAdjacentHTML('beforeend', `<div class="mdw-qt-new-error">${escapeHtml(message)}</div>`);
+}
+
 /** Applies `value` optimistically and asks the host to persist it. */
 function commitEdit(
   root: HTMLElement,
@@ -810,6 +999,9 @@ function onClick(e: MouseEvent): void {
       }
       case 'copy-query':
         void navigator.clipboard.writeText(state.text);
+        break;
+      case 'new-file':
+        beginNewFile(root, state);
         break;
       case 'group': {
         const label = target.closest<HTMLElement>('[data-group]')!.dataset.group!;

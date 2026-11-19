@@ -3,6 +3,7 @@ import * as path from 'path';
 import { FileIndex, runQuery } from './query/host';
 import { createOption, renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
 import { optionsFor, type Relation } from './query/relations';
+import { createQueryFile, newFileContext } from './query/create';
 import { complete } from './query/complete';
 import { SearchViewProvider, SEARCH_VIEW_ID, type OpenRequest } from './search_view';
 
@@ -362,6 +363,27 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           if (!index) break;
           await index.ensure();
           webviewPanel.webview.postMessage({ type: 'queryContextResult', id: message.id, ...index.completionContext() });
+          break;
+        }
+        case 'newFileContext': {
+          const index = indexFor(document.uri);
+          if (!index) break;
+          await index.reconcile();
+          const context = newFileContext(index, document.uri, String(message.text));
+          webviewPanel.webview.postMessage({ type: 'newFileContextResult', id: message.id, ...(context ?? { folder: null, names: [] }) });
+          break;
+        }
+        case 'createFile': {
+          const index = indexFor(document.uri);
+          if (!index) break;
+          try {
+            const fmText = typeof message.frontmatter === 'string' ? message.frontmatter : null;
+            const path = await createQueryFile(index, document.uri, String(message.text), String(message.name), fmText);
+            webviewPanel.webview.postMessage({ type: 'fileCreated', id: message.id, path });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : String(err);
+            webviewPanel.webview.postMessage({ type: 'fileCreated', id: message.id, error: msg });
+          }
           break;
         }
         case 'relationOptions': {
