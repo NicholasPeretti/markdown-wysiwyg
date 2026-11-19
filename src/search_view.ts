@@ -226,12 +226,13 @@ function html(webview: vscode.Webview): string {
 <meta http-equiv="Content-Security-Policy" content="${csp}">
 <style>
   :root { color-scheme: light dark; --row: 22px; }
+  html, body { height: 100%; }
   body {
-    margin: 0; padding: 0; user-select: none;
+    margin: 0; padding: 0; user-select: none; display: flex; flex-direction: column;
     font-family: var(--vscode-font-family); font-size: var(--vscode-font-size);
     color: var(--vscode-sideBar-foreground, var(--vscode-foreground)); background: var(--vscode-sideBar-background);
   }
-  .box { position: sticky; top: 0; padding: 6px 12px 4px 20px; background: var(--vscode-sideBar-background); z-index: 1; }
+  .box { flex: none; padding: 6px 12px 4px 20px; }
   input {
     width: 100%; box-sizing: border-box; padding: 3px 6px; height: 26px;
     font: inherit; color: var(--vscode-input-foreground);
@@ -240,9 +241,13 @@ function html(webview: vscode.Webview): string {
   }
   input:focus { border-color: var(--vscode-focusBorder); }
   input::placeholder { color: var(--vscode-input-placeholderForeground); }
-  .status { padding: 4px 12px 6px 20px; color: var(--vscode-descriptionForeground); min-height: 1.3em; }
+  .status { flex: none; padding: 4px 12px 6px 20px; color: var(--vscode-descriptionForeground); min-height: 1.3em; }
   .status.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  #results { padding-bottom: 12px; outline: none; }
+  #results { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; outline: none; }
+  /* Folder and file rows stick while their children scroll, stacked by depth. */
+  .node > .row { position: sticky; z-index: 1; background: var(--vscode-sideBar-background); }
+  .node > .row:hover { background: var(--vscode-list-hoverBackground); }
+  .icon { flex: none; width: 16px; height: 16px; }
   .row {
     display: flex; align-items: center; gap: 6px; height: var(--row); line-height: var(--row);
     padding-right: 10px; cursor: pointer; white-space: nowrap; position: relative;
@@ -258,7 +263,6 @@ function html(webview: vscode.Webview): string {
   }
   .collapsed > .row .twistie::before { left: 3px; top: 5px; transform: rotate(-45deg); }
   .collapsed > .children { display: none; }
-  .row[data-kind="folder"] .label { font-weight: 600; }
   .label { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2ch; }
   .desc { color: var(--vscode-descriptionForeground); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; direction: rtl; text-align: left; }
   .desc bdi { unicode-bidi: plaintext; }
@@ -294,6 +298,10 @@ function html(webview: vscode.Webview): string {
   const results = document.getElementById('results');
   const status = document.getElementById('status');
   let timer, terms = [], tree = false, collapsed = false, hits = [], query = '';
+  // Seti-style markdown file icon, as used by VS Code's own Search view.
+  const MD_ICON = '<svg class="icon" viewBox="0 0 16 16" aria-hidden="true">' +
+    '<path d="M1.5 12V4.5l3 3.8 3-3.8V12" fill="none" stroke="#519aba" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/>' +
+    '<path d="M12 4v7.5M9.6 9.2l2.4 2.4 2.4-2.4" fill="none" stroke="#519aba" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
   let rows = [];        // visible rows in order (elements)
   let sel = -1;         // index into rows
   const send = () => vscode.postMessage({ type: 'search', query: q.value });
@@ -413,9 +421,11 @@ function html(webview: vscode.Webview): string {
       const row = el('div', 'row');
       row.dataset.key = hit.key;
       row.style.paddingLeft = (8 + depth * 8) + 'px';
+      row.style.top = 'calc(' + depth + ' * var(--row))';
+      row.style.scrollMarginTop = row.style.top;
       const where = [hit.root, dirOf(hit.path)].filter(Boolean).join('/');
       row.title = (hit.root ? hit.root + '/' : '') + hit.path + (hit.title && hit.title !== hit.name ? '\\n' + hit.title : '');
-      row.innerHTML = '<span class="twistie"></span>' +
+      row.innerHTML = '<span class="twistie"></span>' + MD_ICON +
         '<span class="label">' + esc(hit.name + '.md') + '</span>' +
         (showPath && where ? '<span class="desc"><bdi>' + esc(where) + '</bdi></span>' : '<span class="desc"></span>') +
         '<button class="src" title="Open source">&lt;/&gt;</button>' +
@@ -426,6 +436,7 @@ function html(webview: vscode.Webview): string {
         const r = el('div', 'row match');
         r.dataset.index = String(index++);
         r.style.paddingLeft = (8 + (depth + 1) * 8 + 16) + 'px';
+        r.style.scrollMarginTop = 'calc(' + (depth + 1) + ' * var(--row))';
         r.title = 'Line ' + (m.line + 1);
         r.innerHTML = '<span class="label">' + mark(m.text) + '</span><span class="desc"></span><button class="src" title="Open source at line">&lt;/&gt;</button>';
         children.append(r);
@@ -433,6 +444,7 @@ function html(webview: vscode.Webview): string {
       if (hit.matchCount > hit.matches.length) {
         const r = el('div', 'row more');
         r.style.paddingLeft = (8 + (depth + 1) * 8 + 16) + 'px';
+        r.style.scrollMarginTop = 'calc(' + (depth + 1) + ' * var(--row))';
         r.dataset.key = hit.key;
         r.textContent = '+' + (hit.matchCount - hit.matches.length) + ' more…';
         children.append(r);
@@ -459,6 +471,8 @@ function html(webview: vscode.Webview): string {
         const row = el('div', 'row');
         row.dataset.kind = 'folder';
         row.style.paddingLeft = (8 + depth * 8) + 'px';
+        row.style.top = 'calc(' + depth + ' * var(--row))';
+        row.style.scrollMarginTop = row.style.top;
         row.title = label;
         row.innerHTML = '<span class="twistie"></span><span class="label">' + esc(label) + '</span><span class="desc"></span><span class="badge">' + count(d) + '</span>';
         node.append(row);
