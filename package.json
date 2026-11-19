@@ -12,7 +12,8 @@
     "Other"
   ],
   "activationEvents": [
-    "onLanguage:markdown"
+    "onLanguage:markdown",
+    "onView:markdownWysiwyg.searchView"
   ],
   "main": "./dist/extension.js",
   "contributes": {
@@ -56,6 +57,26 @@
         "icon": "$(search)"
       }
     ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "markdownWysiwyg",
+          "title": "Notes",
+          "icon": "$(book)"
+        }
+      ]
+    },
+    "views": {
+      "markdownWysiwyg": [
+        {
+          "type": "webview",
+          "id": "markdownWysiwyg.searchView",
+          "name": "Search Notes",
+          "icon": "$(search)",
+          "contextualTitle": "Search Notes"
+        }
+      ]
+    },
     "keybindings": [
       {
         "command": "markdownWysiwyg.openWysiwyg",
