@@ -45,6 +45,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
   /** Flat list of result lines in display order, for F4 cycling. */
   private results: { hit: ViewHit; match: ViewMatch; index: FileIndex }[] = [];
   private cursor = -1;
+  private focusPending = false;
   private readonly subs: vscode.Disposable[] = [];
 
   constructor(
@@ -83,6 +84,10 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
       switch (msg.type) {
         case 'ready':
           this.post({ type: 'state', query: this.query, tree: this.tree, collapsed: this.collapsed });
+          if (this.focusPending) {
+            this.focusPending = false;
+            this.post({ type: 'focus' });
+          }
           await this.run();
           break;
         case 'search':
@@ -115,8 +120,9 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
   /** Reveals the view and focuses its input. */
   async focus(): Promise<void> {
+    this.focusPending = !this.view;
     await vscode.commands.executeCommand(`${SEARCH_VIEW_ID}.focus`);
-    this.post({ type: 'focus' });
+    if (this.view) this.post({ type: 'focus' });
   }
 
   private post(msg: object): void {
@@ -244,11 +250,15 @@ function html(webview: vscode.Webview): string {
   .row:hover { background: var(--vscode-list-hoverBackground); }
   #results:focus .row.sel { background: var(--vscode-list-activeSelectionBackground); color: var(--vscode-list-activeSelectionForeground); outline: 1px solid var(--vscode-list-focusOutline, var(--vscode-focusBorder)); outline-offset: -1px; }
   #results:not(:focus) .row.sel { background: var(--vscode-list-inactiveSelectionBackground); }
-  .twistie { flex: none; width: 16px; text-align: center; font-size: 10px; opacity: 0.8; }
-  .twistie::before { content: '▾'; }
-  .collapsed > .row .twistie::before { content: '▸'; }
+  .twistie { flex: none; width: 16px; height: 16px; position: relative; }
+  .twistie::before {
+    content: ''; position: absolute; left: 4px; top: 3px; width: 6px; height: 6px;
+    border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor;
+    transform: rotate(45deg); opacity: 0.9;
+  }
+  .collapsed > .row .twistie::before { left: 3px; top: 5px; transform: rotate(-45deg); }
   .collapsed > .children { display: none; }
-  .icon { flex: none; width: 16px; text-align: center; opacity: 0.8; font-size: 12px; }
+  .row[data-kind="folder"] .label { font-weight: 600; }
   .label { overflow: hidden; text-overflow: ellipsis; flex: 0 1 auto; min-width: 2ch; }
   .desc { color: var(--vscode-descriptionForeground); font-size: 0.9em; overflow: hidden; text-overflow: ellipsis; flex: 1 1 auto; direction: rtl; text-align: left; }
   .desc bdi { unicode-bidi: plaintext; }
@@ -405,7 +415,7 @@ function html(webview: vscode.Webview): string {
       row.style.paddingLeft = (8 + depth * 8) + 'px';
       const where = [hit.root, dirOf(hit.path)].filter(Boolean).join('/');
       row.title = (hit.root ? hit.root + '/' : '') + hit.path + (hit.title && hit.title !== hit.name ? '\\n' + hit.title : '');
-      row.innerHTML = '<span class="twistie"></span><span class="icon">▤</span>' +
+      row.innerHTML = '<span class="twistie"></span>' +
         '<span class="label">' + esc(hit.name + '.md') + '</span>' +
         (showPath && where ? '<span class="desc"><bdi>' + esc(where) + '</bdi></span>' : '<span class="desc"></span>') +
         '<button class="src" title="Open source">&lt;/&gt;</button>' +
@@ -450,7 +460,7 @@ function html(webview: vscode.Webview): string {
         row.dataset.kind = 'folder';
         row.style.paddingLeft = (8 + depth * 8) + 'px';
         row.title = label;
-        row.innerHTML = '<span class="twistie"></span><span class="icon">▸</span><span class="label">' + esc(label) + '</span><span class="desc"></span><span class="badge">' + count(d) + '</span>';
+        row.innerHTML = '<span class="twistie"></span><span class="label">' + esc(label) + '</span><span class="desc"></span><span class="badge">' + count(d) + '</span>';
         node.append(row);
         const children = el('div', 'children');
         for (const [k, v] of [...d.dirs].sort((a, b) => a[0].localeCompare(b[0]))) emit(v, k, depth + 1, children);
@@ -468,6 +478,9 @@ function html(webview: vscode.Webview): string {
   function el(tag, cls) { const e = document.createElement(tag); e.className = cls; return e; }
   function esc(s) { return String(s).replace(/[&<>]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c]); }
   function reEsc(s) { return s.replace(/[.*+?^\${}()|[\\]\\\\]/g, '\\\\$&'); }
+  window.addEventListener('focus', () => {
+    if (document.activeElement === document.body) q.focus();
+  });
   vscode.postMessage({ type: 'ready' });
 </script>
 </body>
