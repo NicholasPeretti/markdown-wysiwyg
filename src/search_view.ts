@@ -474,7 +474,7 @@ function html(webview: vscode.Webview): string {
         row.style.top = 'calc(' + depth + ' * var(--row))';
         row.style.scrollMarginTop = row.style.top;
         row.title = label;
-        row.innerHTML = '<span class="twistie"></span><span class="label">' + esc(label) + '</span><span class="desc"></span><span class="badge">' + count(d) + '</span>';
+        row.innerHTML = '<span class="twistie"></span><span class="label">' + esc(label) + '</span><span class="badge">' + count(d) + '</span><span class="desc"></span>';
         node.append(row);
         const children = el('div', 'children');
         for (const [k, v] of [...d.dirs].sort((a, b) => a[0].localeCompare(b[0]))) emit(v, k, depth + 1, children);
