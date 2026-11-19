@@ -65,14 +65,16 @@ export function createToc(editorRoot: HTMLElement, initialVisible: boolean): Toc
     );
 
     panel.replaceChildren(
-      ...headings.map(({ el, level, text }) => {
+      ...headings.map(({ level, text }, i) => {
         const item = document.createElement('div');
         item.className = 'mdw-toc-item';
         item.style.paddingLeft = `${8 + (level - 1) * 12}px`;
         item.textContent = text;
         item.title = text;
+        // Resolve the heading at click time: an external edit can replace the
+        // DOM nodes while leaving the signature (and so this list) unchanged.
         item.addEventListener('click', () => {
-          el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          headings[i]?.el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         });
         return item;
       })
