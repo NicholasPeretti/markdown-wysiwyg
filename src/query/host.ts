@@ -15,12 +15,15 @@ import {
   evaluate,
   fromMatcher,
   parseQuery,
+  isComputedField,
   resolveField,
+  resolveFieldHits,
   type FileRecord,
   type Query,
+  type Resolver,
 } from './lang';
 import type { CompletionContext } from './complete';
-import { relationsFor, resolveOption, type Relation, type RelationSource } from './relations';
+import { optionsFor, relationKey, relationsFor, resolveOption, type Relation, type RelationSource } from './relations';
 import { SearchIndex, matchLines, type MatchLine } from './search';
 
 /** Bytes read from the head of a file to find its frontmatter. */
@@ -41,10 +44,14 @@ export type Cell =
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
   | { kind: 'object'; value: string }
-  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation };
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation }
+  /** Values read through a relation (`tasks.title`); each links to the file it came from. */
+  | { kind: 'links'; items: { value: string; path: string }[] };
 
 export interface QueryResult {
   columns: string[];
+  /** Columns that read through relations or aggregate, so their cells cannot be edited in place. */
+  readonly?: boolean[];
   /** `path` is empty for `distinct` rows, which do not stand for a file. */
   rows: { path: string; cells: Cell[] }[];
   total: number;
@@ -208,7 +215,30 @@ export class FileIndex implements vscode.Disposable {
       fields: [...fields].sort(),
       values: valuesObj,
       folders: [...folders].sort(),
+      relationFields: this.relationFields(),
     };
+  }
+
+  /** For each relation field declared anywhere, the frontmatter keys of the files in its folder. */
+  private relationFields(): { [field: string]: string[] } {
+    const folders = new Map<string, Set<string>>();
+    for (const rec of this.entries.values()) {
+      for (const [field, rel] of relationsFor(this, rec.file.path)) {
+        let set = folders.get(field);
+        if (!set) folders.set(field, (set = new Set()));
+        set.add(rel.folder);
+      }
+    }
+    const out: { [field: string]: string[] } = {};
+    for (const [field, set] of folders) {
+      const keys = new Set<string>();
+      for (const rec of this.entries.values()) {
+        if (![...set].some((f) => !f || rec.file.path.startsWith(`${f}/`))) continue;
+        for (const k of Object.keys(rec.fm)) if (!k.startsWith('$')) keys.add(k);
+      }
+      out[field] = [...keys].sort();
+    }
+    return out;
   }
 
   private list(): Thenable<vscode.Uri[]> {
@@ -410,33 +440,41 @@ export function runQuery(
     return { error: errors.map((e) => `Line ${e.line + 1}: ${e.message}`).join('\n') };
   }
   const matches = fromMatcher(query.from);
+  const resolver = source ? makeResolver(source) : undefined;
   const filtered = records.filter(
-    (r) => matches(r.file.path) && query.where.every((e) => evaluate(e, r, self))
+    (r) => matches(r.file.path) && query.where.every((e) => evaluate(e, r, self, resolver))
   );
-  if (query.distinct) return runDistinct(query, filtered);
+  if (query.distinct) return runDistinct(query, filtered, resolver);
 
-  filtered.sort(compareRecords(query));
+  filtered.sort(compareRecords(query, resolver));
   const columns = effectiveColumns(query);
   const limited = filtered.slice(0, query.limit);
+  const readonly = columns.map(isComputedField);
   const rows = limited.map((r) => {
     const rels = source ? relationsFor(source, r.file.path) : undefined;
     return {
       path: r.file.path,
-      cells: columns.map((c) => {
+      cells: columns.map((c, i) => {
         const rel = rels?.get(c);
-        const v = resolveField(r, c);
-        return rel && source ? relationCell(source, rel, v) : toCell(v);
+        if (rel && source) return relationCell(source, rel, resolveField(r, c));
+        if (!resolver) return toCell(resolveField(r, c));
+        const hits = resolveFieldHits(r, c, resolver);
+        if (hits.joined) readonly[i] = true;
+        if (!hits.plural) return toCell(hits.values[0]);
+        if (!hits.joined) return toCell(resolveField(r, c, resolver));
+        return linksCell(hits);
       }),
     };
   });
-  if (!query.group) return { columns, rows, total: filtered.length };
+  const base = { columns, rows, total: filtered.length, ...(readonly.some(Boolean) ? { readonly } : {}) };
+  if (!query.group) return base;
 
   // Group the limited rows; a file with an array value lands in every group.
   const field = query.group;
   const buckets = new Map<string, { value: unknown; rows: number[] }>();
   limited.forEach((r, i) => {
-    const raw = resolveField(r, field);
-    const values = Array.isArray(raw) && raw.length ? raw : [raw];
+    const raw = resolveField(r, field, resolver);
+    const values = Array.isArray(raw) ? (raw.length ? raw : [undefined]) : [raw];
     for (const v of values) {
       const k = groupKey(v);
       let b = buckets.get(k);
@@ -451,15 +489,68 @@ export function runQuery(
       return dir === 'asc' ? c : -c;
     })
     .map((b) => ({ value: toCell(b.value), rows: b.rows }));
-  return { columns, rows, total: filtered.length, groups };
+  return { ...base, groups };
 }
 
-function runDistinct(query: Query, filtered: FileRecord[]): QueryResult {
+/**
+ * Relation lookups for one query run: each file's declarations and each
+ * relation's option set are read once.
+ */
+function makeResolver(source: RelationSource): Resolver {
+  const decls = new Map<string, Map<string, Relation>>();
+  const byValue = new Map<string, Map<string, string>>();
+  const relationsOf = (path: string) => {
+    let m = decls.get(path);
+    if (!m) decls.set(path, (m = relationsFor(source, path)));
+    return m;
+  };
+  const pathFor = (rel: Relation, value: string): string | undefined => {
+    if (!rel.field) return resolveOption(source, rel, value)?.path;
+    const key = relationKey(rel);
+    let m = byValue.get(key);
+    if (!m) {
+      m = new Map();
+      for (const o of optionsFor(source, rel)) if (!m.has(o.value)) m.set(o.value, o.path);
+      byValue.set(key, m);
+    }
+    return m.get(value);
+  };
+  return {
+    related(record, field) {
+      const rel = relationsOf(record.file.path).get(field);
+      if (!rel) return undefined;
+      const raw = record.fm[field];
+      const values = Array.isArray(raw) ? raw : [raw];
+      const out: FileRecord[] = [];
+      for (const v of values) {
+        if (v === null || v === undefined || typeof v === 'object') continue;
+        const p = pathFor(rel, String(v));
+        const rec = p ? source.record(p) : undefined;
+        if (rec) out.push(rec);
+      }
+      return out;
+    },
+  };
+}
+
+function linksCell(hits: { values: unknown[]; sources: FileRecord[] }): Cell {
+  const items: { value: string; path: string }[] = [];
+  hits.values.forEach((v, i) => {
+    const path = hits.sources[i].file.path;
+    for (const x of Array.isArray(v) ? v : [v]) {
+      if (x === undefined || x === null || x === '') continue;
+      items.push({ value: x instanceof Date ? x.toISOString().slice(0, 10) : String(x), path });
+    }
+  });
+  return items.length ? { kind: 'links', items } : { kind: 'null' };
+}
+
+function runDistinct(query: Query, filtered: FileRecord[], resolver?: Resolver): QueryResult {
   const field = query.distinct!;
   const buckets = new Map<string, { value: unknown; count: number }>();
   for (const r of filtered) {
-    const raw = resolveField(r, field);
-    const values = Array.isArray(raw) && raw.length ? raw : [raw];
+    const raw = resolveField(r, field, resolver);
+    const values = Array.isArray(raw) ? (raw.length ? raw : [undefined]) : [raw];
     for (const v of new Set(values.map((x) => (x instanceof Date ? x.toISOString() : x)))) {
       const k = groupKey(v);
       const b = buckets.get(k);

@@ -80,7 +80,13 @@ export const FILE_FIELDS = [
 export const DEFAULT_COLUMNS = ['file.name', 'file.path', 'file.modified'];
 export const DEFAULT_LIMIT = 50;
 
-const FIELD_RE = /^[A-Za-z_][\w-]*(\.[A-Za-z_][\w-]*)*$/;
+const PATH_SRC = '[A-Za-z_][\\w-]*[*+]?(?:\\.[A-Za-z_][\\w-]*[*+]?)*';
+/** A field path: `a.b`, with `*`/`+` on relation segments (`parent*.tasks`). */
+const PATH_RE = new RegExp(`^${PATH_SRC}$`);
+export const AGGREGATES = ['count', 'sum', 'avg', 'min', 'max'] as const;
+export type Aggregate = (typeof AGGREGATES)[number];
+/** A path or an aggregate over one: `count(tasks)`. */
+const FIELD_RE = new RegExp(`^(?:${PATH_SRC}|(?:${AGGREGATES.join('|')})\\(${PATH_SRC}\\))$`, 'i');
 
 // ---------------------------------------------------------------------------
 // Query parsing
@@ -331,7 +337,7 @@ function tokenize(src: string): Token[] {
       i += num[0].length;
       continue;
     }
-    const ident = /^[A-Za-z_\d][\w.-]*/.exec(rest);
+    const ident = /^[A-Za-z_\d][\w-]*(?:[*+](?=[.)\s]|$))?(?:\.[A-Za-z_\d][\w-]*(?:[*+](?=[.)\s]|$))?)*/.exec(rest);
     if (ident) {
       tokens.push({ t: 'ident', v: ident[0], pos });
       i += ident[0].length;
@@ -385,11 +391,23 @@ export function parseExpr(src: string): Expr {
       next();
       return e;
     }
-    if (t.t !== 'ident' || !FIELD_RE.test(t.v)) {
+    if (t.t !== 'ident' || !PATH_RE.test(t.v)) {
       throw new Error(`Expected a field name at column ${t.pos + 1}`);
     }
     next();
-    const field = t.v;
+    let field = t.v;
+    if (peek().t === 'lparen') {
+      const fn = field.toLowerCase();
+      if (!(AGGREGATES as readonly string[]).includes(fn)) {
+        throw new Error(`Unknown function "${field}" at column ${t.pos + 1}. Expected one of ${AGGREGATES.join(', ')}`);
+      }
+      next();
+      const arg = next();
+      if (arg.t !== 'ident' || !PATH_RE.test(arg.v)) throw new Error(`Expected a field inside ${fn}() at column ${arg.pos + 1}`);
+      if (peek().t !== 'rparen') throw new Error(`Expected ")" at column ${peek().pos + 1}`);
+      next();
+      field = `${fn}(${arg.v})`;
+    }
     const opTok = peek();
     if (opTok.t === 'ident' && opTok.v.toLowerCase() === 'exists') {
       next();
@@ -523,39 +541,217 @@ export interface FileRecord {
   fm: { [key: string]: unknown };
 }
 
-export function resolveField(record: FileRecord, field: string): unknown {
-  if (field.startsWith('file.')) {
-    const key = field.slice(5) as keyof FileMeta;
-    const v = record.file[key];
-    return key === 'modified' || key === 'created' ? new Date(v as number) : v;
+/**
+ * Follows relation fields to other files, so a path such as `tasks.active`
+ * reads the linked task's frontmatter. `related` returns the files a
+ * record's relation field points to (dangling values dropped), or
+ * `undefined` when `field` is not a relation of that record.
+ */
+export interface Resolver {
+  related(record: FileRecord, field: string): FileRecord[] | undefined;
+}
+
+export interface PathSegment {
+  name: string;
+  /** `*`: the record itself plus everything reachable; `+`: reachable only. */
+  mode: '' | '*' | '+';
+}
+
+export interface FieldSpec {
+  fn?: Aggregate;
+  segments: PathSegment[];
+}
+
+const MAX_HOPS = 32;
+const specCache = new Map<string, FieldSpec>();
+
+/** Splits `count(parent*.tasks)` into its function and segments. */
+export function parseField(field: string): FieldSpec {
+  let spec = specCache.get(field);
+  if (spec) return spec;
+  let path = field;
+  let fn: Aggregate | undefined;
+  const call = /^([a-z]+)\((.*)\)$/i.exec(field);
+  if (call && (AGGREGATES as readonly string[]).includes(call[1].toLowerCase())) {
+    fn = call[1].toLowerCase() as Aggregate;
+    path = call[2];
   }
-  const path = field.startsWith('fm.') ? field.slice(3) : field;
+  if (path.startsWith('fm.')) path = path.slice(3);
+  const segments = path.split('.').map((part): PathSegment => {
+    const m = /^(.*?)([*+])$/.exec(part);
+    return m ? { name: m[1], mode: m[2] as '*' | '+' } : { name: part, mode: '' };
+  });
+  spec = { fn, segments };
+  specCache.set(field, spec);
+  return spec;
+}
+
+/** Whether the field follows a relation chain (`*`/`+`) or aggregates — never a plain own field. */
+export function isComputedField(field: string): boolean {
+  const spec = parseField(field);
+  return !!spec.fn || spec.segments.some((s) => s.mode !== '');
+}
+
+/** The value of `field` for `record`; a list when the path fans out through relations. */
+export function resolveField(record: FileRecord, field: string, resolver?: Resolver): unknown {
+  const spec = parseField(field);
+  if (!spec.fn && !resolver && spec.segments.every((s) => s.mode === '')) return ownField(record, spec.segments);
+  const hits = resolvePath(record, spec.segments, resolver);
+  if (spec.fn) return aggregate(spec.fn, hits.values);
+  if (!hits.plural) return hits.values[0];
+  return hits.values.flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v) => v !== undefined && v !== null);
+}
+
+/** Like `resolveField`, also telling which file each value came from (for links in rollup cells). */
+export function resolveFieldHits(record: FileRecord, field: string, resolver?: Resolver): PathHits {
+  const spec = parseField(field);
+  const hits = resolvePath(record, spec.segments, resolver);
+  if (spec.fn) return { values: [aggregate(spec.fn, hits.values)], sources: [record], plural: false, joined: hits.joined };
+  return hits;
+}
+
+export interface PathHits {
+  values: unknown[];
+  /** The file each value was read from, same order as `values`. */
+  sources: FileRecord[];
+  /** The path fanned out (multi relation or `*`/`+`), so the result is a list. */
+  plural: boolean;
+  /** At least one relation was followed. */
+  joined: boolean;
+}
+
+function ownField(record: FileRecord, segments: PathSegment[]): unknown {
+  if (segments[0]?.name === 'file' && segments.length === 2) return fileMeta(record, segments[1].name);
   let cur: unknown = record.fm;
-  for (const part of path.split('.')) {
+  for (const part of segments) {
     if (cur === null || typeof cur !== 'object') return undefined;
-    cur = (cur as { [k: string]: unknown })[part];
+    cur = (cur as { [k: string]: unknown })[part.name];
   }
   return cur;
+}
+
+function fileMeta(record: FileRecord, key: string): unknown {
+  const v = record.file[key as keyof FileMeta];
+  return key === 'modified' || key === 'created' ? new Date(v as number) : v;
+}
+
+function resolvePath(record: FileRecord, segments: PathSegment[], resolver?: Resolver): PathHits {
+  let current: FileRecord[] = [record];
+  let plural = false;
+  let joined = false;
+  for (let i = 0; i < segments.length; i++) {
+    const seg = segments[i];
+    const last = i === segments.length - 1;
+    if (seg.name === 'file' && i + 1 < segments.length) {
+      const key = segments[i + 1].name;
+      return { values: current.map((r) => fileMeta(r, key)), sources: current, plural, joined };
+    }
+    const next: FileRecord[] = [];
+    const values: unknown[] = [];
+    const sources: FileRecord[] = [];
+    for (const rec of current) {
+      const linked = resolver?.related(rec, seg.name);
+      if (linked === undefined) {
+        // Plain frontmatter access (nested objects); `*`/`+` need a relation.
+        if (seg.mode !== '') continue;
+        const v = ownField(rec, [seg]);
+        if (last) {
+          values.push(v);
+          sources.push(rec);
+        } else if (v !== null && typeof v === 'object' && !Array.isArray(v)) {
+          next.push({ file: rec.file, fm: v as { [k: string]: unknown } });
+        }
+        continue;
+      }
+      joined = true;
+      const reached = seg.mode === '' ? linked : closure(rec, seg.name, seg.mode, resolver!);
+      if (seg.mode !== '' || Array.isArray(rec.fm[seg.name])) plural = true;
+      if (last) {
+        if (seg.mode === '') {
+          // The relation's stored value, so relation cells keep their pickers.
+          values.push(rec.fm[seg.name]);
+          sources.push(rec);
+        } else {
+          for (const r of reached) {
+            values.push(r.file.name);
+            sources.push(r);
+          }
+        }
+      } else {
+        next.push(...reached);
+      }
+    }
+    if (last) return { values, sources, plural, joined };
+    if (next.length > 1) plural = true;
+    current = next;
+  }
+  return { values: [], sources: [], plural, joined };
+}
+
+/** Files reached by following `field` repeatedly from `start`, cycle-safe and depth-capped. */
+function closure(start: FileRecord, field: string, mode: '*' | '+', resolver: Resolver): FileRecord[] {
+  const seen = new Set<string>([start.file.path]);
+  const out: FileRecord[] = mode === '*' ? [start] : [];
+  let frontier = [start];
+  for (let hop = 0; hop < MAX_HOPS && frontier.length; hop++) {
+    const next: FileRecord[] = [];
+    for (const rec of frontier) {
+      for (const r of resolver.related(rec, field) ?? []) {
+        if (seen.has(r.file.path)) continue;
+        seen.add(r.file.path);
+        out.push(r);
+        next.push(r);
+      }
+    }
+    frontier = next;
+  }
+  return out;
+}
+
+function aggregate(fn: Aggregate, values: unknown[]): unknown {
+  const items = values.flatMap((v) => (Array.isArray(v) ? v : [v])).filter((v) => !isEmpty(v));
+  switch (fn) {
+    case 'count':
+      return items.length;
+    case 'sum':
+    case 'avg': {
+      const nums = items.map((v) => (typeof v === 'number' ? v : Number(v))).filter((n) => !Number.isNaN(n));
+      if (fn === 'sum') return nums.reduce((a, b) => a + b, 0);
+      return nums.length ? nums.reduce((a, b) => a + b, 0) / nums.length : undefined;
+    }
+    case 'min':
+    case 'max': {
+      let best: unknown;
+      for (const v of items) {
+        if (best === undefined) best = v;
+        else {
+          const c = compareValues(v, best);
+          if (fn === 'min' ? c < 0 : c > 0) best = v;
+        }
+      }
+      return best;
+    }
+  }
 }
 
 /**
  * Evaluates `expr` against `record`. `self` is the file containing the query;
  * `$.field` literals read from it and match when any of its values match.
  */
-export function evaluate(expr: Expr, record: FileRecord, self?: FileRecord): boolean {
+export function evaluate(expr: Expr, record: FileRecord, self?: FileRecord, resolver?: Resolver): boolean {
   switch (expr.type) {
     case 'and':
-      return expr.items.every((e) => evaluate(e, record, self));
+      return expr.items.every((e) => evaluate(e, record, self, resolver));
     case 'or':
-      return expr.items.some((e) => evaluate(e, record, self));
+      return expr.items.some((e) => evaluate(e, record, self, resolver));
     case 'not':
-      return !evaluate(expr.item, record, self);
+      return !evaluate(expr.item, record, self, resolver);
     case 'exists':
-      return !isEmpty(resolveField(record, expr.field));
+      return !isEmpty(resolveField(record, expr.field, resolver));
     case 'cmp': {
-      const actual = resolveField(record, expr.field);
+      const actual = resolveField(record, expr.field, resolver);
       if (expr.value.kind !== 'ref') return compare(actual, expr.op, expr.value);
-      const lits = refLiterals(self ? resolveField(self, expr.value.field) : undefined);
+      const lits = refLiterals(self ? resolveField(self, expr.value.field, resolver) : undefined);
       // `!=` against a set means "none of them"; everything else means "any of them".
       return expr.op === '!='
         ? lits.every((l) => compare(actual, expr.op, l))
@@ -730,11 +926,11 @@ export function asDateMs(v: unknown): number | undefined {
 }
 
 /** Sort comparator over records for the query's sort spec. Missing values sort last. */
-export function compareRecords(query: Query): (a: FileRecord, b: FileRecord) => number {
+export function compareRecords(query: Query, resolver?: Resolver): (a: FileRecord, b: FileRecord) => number {
   return (a, b) => {
     for (const { field, dir } of query.sort) {
-      const va = resolveField(a, field);
-      const vb = resolveField(b, field);
+      const va = resolveField(a, field, resolver);
+      const vb = resolveField(b, field, resolver);
       const c = compareValues(va, vb);
       if (c !== 0) return dir === 'asc' ? c : -c;
     }
@@ -844,6 +1040,7 @@ export function seedValues(query: Query, self?: FileRecord): Map<string, unknown
       return;
     }
     if (e.type !== 'cmp' || e.field.startsWith('file.') || out.has(e.field)) return;
+    if (isComputedField(e.field) || e.field.replace(/^fm\./, '').includes('.')) return;
     if (e.op !== '==' && e.op !== 'contains') return;
     let value: unknown;
     const lit = e.value;

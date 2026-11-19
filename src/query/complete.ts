@@ -3,7 +3,7 @@
  * supplies what the index knows (fields, values, folders).
  */
 
-import { FILE_FIELDS, OPERATORS, QUERY_KEYS } from './lang';
+import { AGGREGATES, FILE_FIELDS, OPERATORS, QUERY_KEYS } from './lang';
 
 export interface CompletionContext {
   /** Frontmatter keys seen in the index (dotted for nested). */
@@ -12,6 +12,39 @@ export interface CompletionContext {
   values: { [field: string]: string[] };
   /** Folders (workspace-relative) that contain Markdown files. */
   folders: string[];
+  /** Relation field name → frontmatter keys seen in the files it points to. */
+  relationFields?: { [field: string]: string[] };
+}
+
+const AGGREGATE_DETAIL: { [k: string]: string } = {
+  count: 'number of items, e.g. count(tasks)',
+  sum: 'sum of numbers',
+  avg: 'average of numbers',
+  min: 'smallest value',
+  max: 'largest value',
+};
+
+/** `tasks.` / `parent*.` → the fields of the linked files. */
+function relatedFields(word: string, ctx: CompletionContext): CompletionItem[] | null {
+  const dot = word.lastIndexOf('.');
+  if (dot < 0 || word.startsWith('$') || word.startsWith('file.')) return null;
+  const prefix = word.slice(0, dot);
+  const open = prefix.lastIndexOf('(');
+  const path = prefix.slice(open + 1);
+  const last = path.split('.').pop()!.replace(/[*+]$/, '');
+  const known = ctx.relationFields?.[last];
+  if (!known) return null;
+  const items: CompletionItem[] = [
+    ...known.map((f) => ({ label: `${prefix}.${f}`, kind: 'field' as const, detail: `${last} → ${f}` })),
+    ...FILE_FIELDS.map((f) => ({ label: `${prefix}.${f}`, kind: 'field' as const, detail: FILE_FIELD_DETAIL[f] })),
+  ];
+  if (!/[*+]$/.test(path.split('.').pop()!) && ctx.relationFields?.[last]) {
+    items.push(
+      { label: `${prefix}*.`, kind: 'field', detail: `${last} chain, including this file` },
+      { label: `${prefix}+.`, kind: 'field', detail: `${last} chain, excluding this file` }
+    );
+  }
+  return items;
 }
 
 export interface CompletionItem {
@@ -50,7 +83,7 @@ const FILE_FIELD_DETAIL: { [k: string]: string } = {
 
 export function complete(line: string, column: number, ctx: CompletionContext): Completions | null {
   const before = line.slice(0, column);
-  const wordMatch = /[\w.\-/*{}?"'$]*$/.exec(before);
+  const wordMatch = /[\w.\-/*+{}?"'$]*$/.exec(before);
   const word = wordMatch ? wordMatch[0] : '';
   const from = column - word.length;
 
@@ -66,10 +99,12 @@ export function complete(line: string, column: number, ctx: CompletionContext): 
     };
   }
 
-  const fields = () => [
-    ...FILE_FIELDS.map((f) => ({ label: f, kind: 'field' as const, detail: FILE_FIELD_DETAIL[f] })),
-    ...ctx.fields.map((f) => ({ label: f, kind: 'field' as const, detail: 'frontmatter' })),
-  ];
+  const fields = () =>
+    relatedFields(word, ctx) ?? [
+      ...FILE_FIELDS.map((f) => ({ label: f, kind: 'field' as const, detail: FILE_FIELD_DETAIL[f] })),
+      ...ctx.fields.map((f) => ({ label: f, kind: 'field' as const, detail: 'frontmatter' })),
+      ...AGGREGATES.map((f) => ({ label: `${f}(`, kind: 'field' as const, detail: AGGREGATE_DETAIL[f] })),
+    ];
 
   switch (key.toLowerCase()) {
     case 'from':
@@ -117,8 +152,18 @@ function completeWhere(
   const head = expr.slice(0, expr.length - word.length);
   const tokens =
     head.match(
-      /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\/(?:[^/\\]|\\.)*\/[a-z]*|[<>=!]+|[\w.\-$]+|[()]/g
+      /"(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|\/(?:[^/\\]|\\.)*\/[a-z]*|[<>=!]+|[\w.\-$*+]+|[()]/g
     ) ?? [];
+  // Fold `count ( tasks )` into one field token.
+  if (
+    tokens.length >= 4 &&
+    tokens[tokens.length - 1] === ')' &&
+    tokens[tokens.length - 3] === '(' &&
+    (AGGREGATES as readonly string[]).includes(tokens[tokens.length - 4].toLowerCase()) &&
+    isField(tokens[tokens.length - 2])
+  ) {
+    tokens.splice(-4, 4, `${tokens[tokens.length - 4]}(${tokens[tokens.length - 2]})`);
+  }
   const last = tokens[tokens.length - 1];
   const prev = tokens[tokens.length - 2];
   const lastLower = last?.toLowerCase();
@@ -200,7 +245,11 @@ function completeWhere(
 }
 
 function isField(t: string | undefined): boolean {
-  return t !== undefined && /^[a-z_][\w-]*(\.[a-z_][\w-]*)*$/i.test(t) && !['and', 'or', 'not', 'exists', 'true', 'false', 'null', 'today', 'now'].includes(t);
+  if (t === undefined) return false;
+  const path = /^[a-z_][\w-]*[*+]?(\.[a-z_][\w-]*[*+]?)*$/i;
+  const call = /^[a-z]+\((.*)\)$/i.exec(t);
+  if (call) return (AGGREGATES as readonly string[]).includes(t.slice(0, t.indexOf('(')).toLowerCase()) && path.test(call[1]);
+  return path.test(t) && !['and', 'or', 'not', 'exists', 'true', 'false', 'null', 'today', 'now'].includes(t.toLowerCase());
 }
 
 function isLiteral(t: string | undefined): boolean {

@@ -17,6 +17,7 @@ import type { Ctx } from '@milkdown/kit/ctx';
 import type { EditorView } from '@milkdown/kit/prose/view';
 import { complete, type CompletionContext } from '../query/complete';
 import {
+  AGGREGATES,
   FILE_FIELDS,
   OPERATORS,
   QUERY_KEYS,
@@ -41,10 +42,13 @@ export type Cell =
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
   | { kind: 'object'; value: string }
-  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation };
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation }
+  | { kind: 'links'; items: { value: string; path: string }[] };
 
 interface Result {
   columns: string[];
+  /** Columns read through relations or aggregated: shown, never edited. */
+  readonly?: boolean[];
   rows: { path: string; cells: Cell[] }[];
   total: number;
   groups?: { value: Cell; rows: number[] }[];
@@ -138,6 +142,7 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
       if (!state) return true;
       state.result = normalizeColumns({
         columns: message.columns as string[],
+        readonly: message.readonly as boolean[] | undefined,
         rows: message.rows as Result['rows'],
         total: message.total as number,
         groups: message.groups as Result['groups'],
@@ -341,7 +346,7 @@ function render(id: string, state: BlockState): HTMLElement {
       row.path && row.path === state.focusPath ? ' class="mdw-qt-focus"' : ''
     }>${row.cells
       .map((cell, i) => {
-        const mode = row.path ? editMode(result.columns[i], cell) : null;
+        const mode = row.path && !result.readonly?.[i] ? editMode(result.columns[i], cell) : null;
         const hint = mode === 'field' || mode === 'rename' ? ' title="Double-click to edit"' : '';
         const attrs = mode ? ` data-col="${i}" data-edit="${mode}"${hint}` : '';
         return `<td${attrs}>${mode ? renderEditableCell(cell, mode) : renderCell(cell)}</td>`;
@@ -451,6 +456,13 @@ function renderCell(cell: Cell): string {
             : `<span class="mdw-qt-pill mdw-qt-rel mdw-qt-rel-missing" title="No such option">${escapeHtml(it.value)}</span>`
         )
         .join('');
+    case 'links':
+      return cell.items
+        .map(
+          (it) =>
+            `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.value)}</span>`
+        )
+        .join('');
   }
 }
 
@@ -460,7 +472,7 @@ function renderCell(cell: Cell): string {
  */
 function normalizeColumns(result: Result): Result {
   result.columns.forEach((column, i) => {
-    if (column.startsWith('file.')) return;
+    if (column.startsWith('file.') || result.readonly?.[i]) return;
     let shape: Cell | undefined;
     for (const row of result.rows) {
       const c = row.cells[i];
@@ -541,6 +553,8 @@ function cellText(cell: Cell): string {
       return cell.value.join(', ');
     case 'relation':
       return cell.items.map((i) => i.label ?? i.value).join(', ');
+    case 'links':
+      return cell.items.map((i) => i.value).join(', ');
     default:
       return String(cell.value);
   }
@@ -1256,6 +1270,7 @@ const queryStream = StreamLanguage.define<{ key: string | null }>({
       const lower = w.toLowerCase();
       if (KEYWORDS.has(lower)) return 'keyword';
       if (lower === 'includes' || OPERATORS.some((o) => o.toLowerCase() === lower)) return 'operator';
+      if ((AGGREGATES as readonly string[]).includes(lower) && stream.peek() === '(') return 'function(variableName)';
       if ((FILE_FIELDS as readonly string[]).includes(w)) return 'variableName.special';
       return 'variableName';
     }

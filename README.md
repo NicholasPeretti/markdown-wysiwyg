@@ -56,6 +56,19 @@ columns: file.name, title, status, file.modified
 
 Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Empty fields (missing, `null`, `""` or an empty list such as a relation with no items) compare like Notion: `== null` and `== ""` match them, `!=` is true, everything else is false.
 
+### Following relations
+
+A field path can step through a [relation](#relations) into the linked file: `tasks.active` reads `active` from the task(s) a research file names in `tasks`, `parent.title` the parent's title, `tasks.parent.done` as deep as you like. If the first segment is not a relation of that file, the path is a nested frontmatter object as before (`meta.owner`). A `multi` relation yields a list, which matches when any item does.
+
+```query
+from: research
+where: tasks.active == true and tasks.done == false
+```
+
+`field*` follows the relation repeatedly and collects the file itself plus everything reached (cycle-safe, at most 32 hops); `field+` leaves the file itself out. So in a task file, `parent*.tasks includes $.file.name` lists its research and every sub-research under it, and `count(parent+)` is a file's depth in the tree.
+
+Aggregates reduce a path to one value and work wherever a field does (`where`, `sort`, `columns`, `group`, `distinct`): `count(p)` (0 when empty), `sum(p)`, `avg(p)`, `min(p)`, `max(p)` — e.g. `columns: title, count(tasks)`, `sort: max(tasks.due) asc`. Columns that go through a relation or aggregate are read-only; values from linked files show as pills that **Cmd/Ctrl+click** opens. With several linked files, `tasks.active == true and tasks.done == false` holds when *some* task is active and *some* task is not done (like Notion rollups).
+
 `$.field` stands for the current file's own frontmatter value, so a query can follow the file it lives in. If the value is a list, a clause matches when any item does (`!=` when none does). Results update live as you edit the properties panel.
 
 ```query
