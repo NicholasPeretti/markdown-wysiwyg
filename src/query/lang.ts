@@ -550,10 +550,8 @@ export function evaluate(expr: Expr, record: FileRecord, self?: FileRecord): boo
       return expr.items.some((e) => evaluate(e, record, self));
     case 'not':
       return !evaluate(expr.item, record, self);
-    case 'exists': {
-      const v = resolveField(record, expr.field);
-      return v !== undefined && v !== null;
-    }
+    case 'exists':
+      return !isEmpty(resolveField(record, expr.field));
     case 'cmp': {
       const actual = resolveField(record, expr.field);
       if (expr.value.kind !== 'ref') return compare(actual, expr.op, expr.value);
@@ -595,10 +593,17 @@ function refLiterals(v: unknown): Exclude<Literal, { kind: 'ref' }>[] {
   return [one(v)];
 }
 
-/** Notion semantics: a missing field is "empty" — `!=` is true, everything else false. */
+/** A field is empty when missing, `null`, `""` or an empty list (e.g. a relation with no items). */
+function isEmpty(v: unknown): boolean {
+  return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
+}
+
+/** Notion semantics: an empty field equals `null`/`""` — `!=` is true, everything else false. */
 function compare(actual: unknown, op: CmpOp, lit: Exclude<Literal, { kind: 'ref' }>): boolean {
-  const missing = actual === undefined || actual === null;
-  if (lit.kind === 'null') return op === '==' ? missing : op === '!=' ? !missing : false;
+  const missing = isEmpty(actual);
+  if (lit.kind === 'null' || (lit.kind === 'string' && lit.value === '')) {
+    return op === '==' ? missing : op === '!=' ? !missing : false;
+  }
   if (missing) return op === '!=';
 
   switch (op) {

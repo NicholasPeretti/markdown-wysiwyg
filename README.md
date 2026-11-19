@@ -54,7 +54,7 @@ columns: file.name, title, status, file.modified
 | `group` | Group rows under a folding header per value of this field (a file with an array value, e.g. `tags`, appears in each of its groups). Groups follow the `sort` direction of that field, if any; `page_size` is ignored. |
 | `distinct` | List the unique values of this field with a file count instead of files (columns `<field>`, `count`). Default sort: `count desc`; `limit` caps the number of values. Cannot be combined with `group`. |
 
-Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Missing fields compare like Notion: `!=` is true, everything else is false.
+Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Empty fields (missing, `null`, `""` or an empty list such as a relation with no items) compare like Notion: `== null` and `== ""` match them, `!=` is true, everything else is false.
 
 `$.field` stands for the current file's own frontmatter value, so a query can follow the file it lives in. If the value is a list, a clause matches when any item does (`!=` when none does). Results update live as you edit the properties panel.
 
