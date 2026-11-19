@@ -4,7 +4,6 @@ import { FileIndex, runQuery } from './query/host';
 import { createOption, renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
 import { optionsFor, type Relation } from './query/relations';
 import { complete } from './query/complete';
-import { SearchViewProvider, SEARCH_VIEW_ID, type OpenRequest } from './search_view';
 
 const VIEW_TYPE = 'markdownWysiwyg.editor';
 
@@ -46,11 +45,7 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.setStatusBarMessage('Markdown query index rebuilt', 3000);
     }),
 
-    vscode.commands.registerCommand('markdownWysiwyg.search', () => searchView.focus()),
-    vscode.window.registerWebviewViewProvider(SEARCH_VIEW_ID, searchView, {
-      webviewOptions: { retainContextWhenHidden: true },
-    }),
-    searchView,
+    vscode.commands.registerCommand('markdownWysiwyg.search', () => searchNotes()),
 
     vscode.languages.registerCompletionItemProvider(
       'markdown',
@@ -103,15 +98,110 @@ function indexFor(uri: vscode.Uri): FileIndex | undefined {
   if (!index) {
     index = new FileIndex(folder);
     indexes.set(key, index);
-    searchView.watch(index);
   }
   return index;
 }
 
-const searchView = new SearchViewProvider(
-  () => (vscode.workspace.workspaceFolders ?? []).map((f) => indexFor(f.uri)!),
-  openSearchResult
-);
+interface SearchItem extends vscode.QuickPickItem {
+  req?: OpenRequest;
+}
+
+interface OpenRequest {
+  uri: vscode.Uri;
+  /** 0-based line of the match. */
+  line: number;
+  /** Text of the matched line, used to land the find bar on it. */
+  anchor?: string;
+  query: string;
+  terms: string[];
+  source: boolean;
+}
+
+const OPEN_SOURCE_BUTTON: vscode.QuickInputButton = {
+  iconPath: new vscode.ThemeIcon('code'),
+  tooltip: 'Open source at this line',
+};
+
+const LINES_PER_NOTE = 3;
+
+/**
+ * Ranked full-text search over the workspace's notes, in a quick pick. Each
+ * note is a separator (title · folder) followed by its best matching lines.
+ */
+async function searchNotes(): Promise<void> {
+  const folders = vscode.workspace.workspaceFolders ?? [];
+  if (!folders.length) {
+    void vscode.window.showInformationMessage('Open a folder to search its notes.');
+    return;
+  }
+  const all = folders.map((f) => indexFor(f.uri)!);
+  const pick = vscode.window.createQuickPick<SearchItem>();
+  pick.placeholder = 'Search notes (every word must match; ranked by relevance)';
+  pick.matchOnDescription = false;
+  pick.matchOnDetail = false;
+  // Keep BM25 order: VS Code would otherwise sort items by label match.
+  (pick as unknown as { sortByLabel: boolean }).sortByLabel = false;
+  pick.busy = true;
+  pick.show();
+  await Promise.all(all.map((index) => index.ensure()));
+  pick.busy = false;
+
+  let timer: NodeJS.Timeout | undefined;
+  const update = () => {
+    const query = pick.value.trim();
+    if (!query) {
+      pick.items = [];
+      return;
+    }
+    const terms = all[0].searchTerms(query);
+    const hits = all
+      .flatMap((index) => index.find(query, 30).map((hit) => ({ hit, index })))
+      .sort((a, b) => b.hit.score - a.hit.score)
+      .slice(0, 30);
+    const items: SearchItem[] = [];
+    for (const { hit, index } of hits) {
+      const where = [folders.length > 1 ? index.folder.name : '', hit.folder].filter(Boolean).join(' › ');
+      items.push({
+        kind: vscode.QuickPickItemKind.Separator,
+        label: where ? `${hit.title ?? hit.name}  ·  ${where}` : (hit.title ?? hit.name),
+      });
+      const uri = vscode.Uri.joinPath(index.folder.uri, hit.path);
+      const lines = hit.matches.slice(0, LINES_PER_NOTE);
+      if (!lines.length) lines.push({ line: 0, text: hit.title ?? hit.name, hits: 0 });
+      for (const m of lines) {
+        items.push({
+          label: m.text,
+          description: `:${m.line + 1}`,
+          alwaysShow: true,
+          buttons: [OPEN_SOURCE_BUTTON],
+          req: { uri, line: m.line, anchor: m.hits ? m.text : undefined, query, terms, source: false },
+        });
+      }
+    }
+    pick.items = items;
+  };
+  update();
+
+  pick.onDidChangeValue(() => {
+    clearTimeout(timer);
+    timer = setTimeout(update, 60);
+  });
+  pick.onDidAccept(() => {
+    const req = pick.selectedItems[0]?.req;
+    if (!req) return;
+    pick.hide();
+    void openSearchResult(req);
+  });
+  pick.onDidTriggerItemButton(({ item }) => {
+    if (!item.req) return;
+    pick.hide();
+    void openSearchResult({ ...item.req, source: true });
+  });
+  pick.onDidHide(() => {
+    clearTimeout(timer);
+    pick.dispose();
+  });
+}
 
 /** Opens a search hit: the source at its line, or the WYSIWYG editor with the query highlighted. */
 async function openSearchResult(req: OpenRequest): Promise<void> {
