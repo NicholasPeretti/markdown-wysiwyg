@@ -373,6 +373,24 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           webviewPanel.webview.postMessage({ type: 'newFileContextResult', id: message.id, ...(context ?? { folder: null, names: [] }) });
           break;
         }
+        case 'deleteFile': {
+          const index = indexFor(document.uri);
+          if (!index) break;
+          const rel = String(message.path);
+          const target = vscode.Uri.joinPath(index.folder.uri, rel);
+          const choice = await vscode.window.showWarningMessage(
+            `Are you sure you want to delete '${String(message.name ?? rel)}'?`,
+            { modal: true, detail: 'You can restore this file from the Trash.' },
+            'Move to Trash'
+          );
+          if (choice !== 'Move to Trash') break;
+          try {
+            await vscode.workspace.fs.delete(target, { useTrash: true });
+          } catch (err) {
+            void vscode.window.showErrorMessage(err instanceof Error ? err.message : String(err));
+          }
+          break;
+        }
         case 'createFile': {
           const index = indexFor(document.uri);
           if (!index) break;

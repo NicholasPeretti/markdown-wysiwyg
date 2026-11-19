@@ -63,7 +63,7 @@ from: tasks
 where: tags includes $.name
 ```
 
-- **Cmd/Ctrl+click** a row to open the file.
+- **Cmd/Ctrl+click** a row to open the file. **Right-click** a row for **Open** and **Delete…** (asks for confirmation, then moves the file to the Trash).
 - Cells are editable in place and the target file's frontmatter is rewritten (comments and formatting preserved). Booleans are checkboxes; lists are pills with a hover ✕ and a `+` to add; relations are pills/dropdowns opening the option picker. Empty cells take the shape of their column so a value can be added. **Double-click** text, number and date cells to type (an empty value removes the field; `file.name` renames the file). Open files are edited in their buffer and saved unless they already had unsaved changes.
 - A **+ New** row at the bottom creates a file, Notion-style. Type a name (validated as you type: not empty, no `\ / : * ? " < > |`, no clash with an existing file) and press `Enter`; `Esc` cancels. The file goes in the `from` folder (or the current file's folder when there is no `from`; the row is hidden when `from` is a glob or for `distinct` queries). Its frontmatter is pre-filled from the `==`/`contains` terms of `where` so it matches the query, with an empty value for every other column and the `$relations` its siblings declare; the new row is highlighted once it appears.
 - A toolbar above the header (it stays visible while you scroll) holds a **Filter rows…** box at the left and, on hover, a ✎ toggle to edit the query plus a **⋯** menu at the right with **Copy as Markdown** (static table of the current result) and **Copy query**.

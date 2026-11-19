@@ -89,6 +89,7 @@ export function installQueryTables(h: Host): void {
   document.addEventListener('focusin', onFocusIn, true);
   document.addEventListener('input', onFilterInput, true);
   document.addEventListener('keydown', onFilterKeydown, true);
+  document.addEventListener('contextmenu', onContextMenu, true);
 }
 
 /** `renderPreview` for Crepe's code block config. */
@@ -1118,6 +1119,53 @@ function syncEditToggle(block: HTMLElement | null, editing: boolean): void {
 
 function closeMenus(): void {
   document.querySelectorAll('.mdw-qt-menu.open').forEach((m) => m.classList.remove('open'));
+  document.querySelector('.mdw-qt-ctx')?.remove();
+}
+
+// ---------------------------------------------------------------------------
+// Row context menu
+
+/** Right-click on a row: Open / Delete. Delete is confirmed by the host and moves the file to the Trash. */
+function onContextMenu(e: MouseEvent): void {
+  const target = e.target as HTMLElement;
+  const row = target.closest<HTMLElement>('.mdw-qt tr[data-path]');
+  closeMenus();
+  if (!row || target.closest('input, .mdw-qt-pills, .mdw-qt-sel')) return;
+  e.preventDefault();
+  e.stopPropagation();
+  const path = row.dataset.path!;
+  const name = path.split('/').pop() ?? path;
+  const menu = document.createElement('div');
+  menu.className = 'mdw-qt-ctx';
+  menu.setAttribute('role', 'menu');
+  menu.innerHTML = `<button role="menuitem" data-ctx="open">Open</button>
+    <div class="mdw-qt-ctx-sep"></div>
+    <button role="menuitem" data-ctx="delete" class="mdw-qt-ctx-danger">Delete…</button>`;
+  menu.style.left = `${e.clientX}px`;
+  menu.style.top = `${e.clientY}px`;
+  document.body.appendChild(menu);
+  // Keep it on screen.
+  const r = menu.getBoundingClientRect();
+  if (r.right > window.innerWidth) menu.style.left = `${Math.max(0, e.clientX - r.width)}px`;
+  if (r.bottom > window.innerHeight) menu.style.top = `${Math.max(0, e.clientY - r.height)}px`;
+  menu.addEventListener('mousedown', (ev) => ev.preventDefault());
+  menu.addEventListener('click', (ev) => {
+    const act = (ev.target as HTMLElement).closest<HTMLElement>('[data-ctx]')?.dataset.ctx;
+    ev.preventDefault();
+    ev.stopPropagation();
+    closeMenus();
+    if (act === 'open') host?.post({ type: 'openFile', path });
+    else if (act === 'delete') host?.post({ type: 'deleteFile', path, name });
+  });
+  const onKey = (ev: KeyboardEvent) => {
+    if (ev.key === 'Escape') {
+      ev.preventDefault();
+      ev.stopPropagation();
+      closeMenus();
+    }
+  };
+  document.addEventListener('keydown', onKey, { capture: true, once: true });
+  menu.querySelector<HTMLElement>('button')?.focus();
 }
 
 function replaceContent(root: HTMLElement, fresh: HTMLElement): void {

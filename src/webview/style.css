@@ -938,6 +938,52 @@ body {
   color: var(--vscode-menu-selectionForeground, inherit);
 }
 
+/* Row context menu (right-click): fixed to the pointer, styled like the ⋯ menu. */
+.mdw-qt-ctx {
+  position: fixed;
+  z-index: 1000;
+  min-width: 160px;
+  padding: 4px;
+  display: flex;
+  flex-direction: column;
+  background: var(--vscode-menu-background, var(--vscode-editorWidget-background, var(--vscode-editor-background)));
+  color: var(--vscode-menu-foreground, var(--vscode-editor-foreground));
+  border: 1px solid var(--vscode-menu-border, var(--vscode-editorWidget-border, rgba(128, 128, 128, 0.35)));
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  font-family: var(--vscode-font-family, sans-serif);
+}
+
+.mdw-qt-ctx button {
+  margin: 0;
+  padding: 5px 10px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.mdw-qt-ctx button:hover,
+.mdw-qt-ctx button:focus-visible {
+  outline: none;
+  background: var(--vscode-menu-selectionBackground, var(--vscode-list-hoverBackground));
+  color: var(--vscode-menu-selectionForeground, inherit);
+}
+
+.mdw-qt-ctx-danger {
+  color: var(--vscode-errorForeground, #f48771);
+}
+
+.mdw-qt-ctx-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--vscode-menu-separatorBackground, rgba(128, 128, 128, 0.35));
+}
+
 /* Footer: count + pager, quiet, like Notion's calculation row. */
 .mdw-qt-footer {
   display: flex;
