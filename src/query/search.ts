@@ -192,6 +192,39 @@ export class SearchIndex {
   }
 }
 
+export interface MatchLine {
+  /** 0-based line in `text`. */
+  line: number;
+  /** The line, trimmed, with markdown punctuation lightened. */
+  text: string;
+  /** Distinct query words present in the line. */
+  hits: number;
+}
+
+/**
+ * Lines of `text` containing a query stem, best first (most distinct words,
+ * then document order), capped at `max`.
+ */
+export function matchLines(text: string, groups: string[][], max = 5): MatchLine[] {
+  const want = new Map<string, number>();
+  groups.forEach((g, i) => g.forEach((t) => want.set(t, i)));
+  const out: MatchLine[] = [];
+  text.split('\n').forEach((raw, line) => {
+    const seen = new Set<number>();
+    for (const m of raw.toLowerCase().matchAll(TOKEN_RE)) {
+      const g = want.get(stem(m[0]));
+      if (g !== undefined) seen.add(g);
+    }
+    if (!seen.size) return;
+    const cleaned = raw
+      .replace(/^\s{0,3}(#{1,6}\s+|[-*+]\s+|\d+\.\s+|>\s*)+/, '')
+      .replace(/[*_`~]+/g, '')
+      .trim();
+    if (cleaned) out.push({ line, text: cleaned, hits: seen.size });
+  });
+  return out.sort((a, b) => b.hits - a.hits || a.line - b.line).slice(0, max);
+}
+
 /**
  * Picks the passage of `text` where the most distinct query stems cluster
  * and returns it trimmed to one line, with the line number of its centre.

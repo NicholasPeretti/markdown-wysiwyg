@@ -18,7 +18,7 @@ import {
 import { createToc, type Toc } from './toc';
 import { installLinkHandler } from './links';
 import { handleRelationMessage, installRelationOptions } from './relation_options';
-import { findPlugin, installFind } from './find';
+import { findPlugin, installFind, type FindApi } from './find';
 import { installBlockMenu } from './block_menu';
 import { htmlInlineInputRule, htmlInlinePlugin } from './html_inline';
 import {
@@ -178,12 +178,21 @@ function focusEditor(): void {
 
 window.addEventListener('focus', focusEditor);
 
+let pendingFind: (() => void) | undefined;
+
 window.addEventListener('message', async (event) => {
   const message = event.data;
   if (message && handleQueryMessage(message)) {
     return;
   }
   if (message && handleRelationMessage(message)) {
+    return;
+  }
+  if (message?.type === 'find') {
+    // From Search Notes: wait for the editor if it is still being created.
+    const show = () => find.openWith(String(message.query), message.terms as string[], message.anchor as string | undefined);
+    if (crepe) show();
+    else pendingFind = show;
     return;
   }
   if (message?.type === 'toggleToc') {
@@ -199,6 +208,8 @@ window.addEventListener('message', async (event) => {
   if (!crepe) {
     tocVisible = message.tocVisible ?? true;
     await createEditor(text);
+    pendingFind?.();
+    pendingFind = undefined;
     return;
   }
 
@@ -226,7 +237,7 @@ installLinkHandler(
 );
 installOverflowWatcher(document.body);
 installMermaidViewer();
-installFind(() => crepe?.editor.ctx);
+const find: FindApi = installFind(() => crepe?.editor.ctx);
 installBlockMenu(() => (crepe ? crepe.editor.ctx.get(editorViewCtx) : null));
 installQueryTables({
   post: (message) => vscode.postMessage(message),

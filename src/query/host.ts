@@ -21,7 +21,7 @@ import {
 } from './lang';
 import type { CompletionContext } from './complete';
 import { relationsFor, resolveOption, type Relation, type RelationSource } from './relations';
-import { SearchIndex, snippet, type Snippet } from './search';
+import { SearchIndex, matchLines, type MatchLine } from './search';
 
 /** Bytes read from the head of a file to find its frontmatter. */
 const HEAD_BYTES = 4096;
@@ -61,7 +61,7 @@ export interface SearchResult {
   title?: string;
   folder: string;
   score: number;
-  snippet: Snippet;
+  matches: MatchLine[];
 }
 
 export class FileIndex implements vscode.Disposable {
@@ -140,7 +140,12 @@ export class FileIndex implements vscode.Disposable {
     return [...this.entries.values()];
   }
 
-  /** BM25-ranked files for a free-text query, with a snippet around the best passage. */
+  /** Stems a query highlights, flattened (for the editor's find bar). */
+  searchTerms(query: string): string[] {
+    return [...new Set(this.search.queryTerms(query).flat())];
+  }
+
+  /** BM25-ranked files for a free-text query, each with its best matching lines. */
   find(query: string, limit = 50): SearchResult[] {
     const groups = this.search.queryTerms(query);
     return this.search.search(query, limit).map(({ id, score }) => {
@@ -152,7 +157,7 @@ export class FileIndex implements vscode.Disposable {
         title,
         folder: rec.file.folder,
         score,
-        snippet: bodySnippet(this.texts.get(id), groups),
+        matches: this.bodyMatches(id, groups),
       };
     });
   }
@@ -253,6 +258,12 @@ export class FileIndex implements vscode.Disposable {
     if (changed) this.emitChange();
   }
 
+  private bodyMatches(rel: string, groups: string[][]): MatchLine[] {
+    const entry = this.texts.get(rel);
+    if (!entry) return [];
+    return matchLines(entry.body, groups).map((m) => ({ ...m, line: m.line + entry.line }));
+  }
+
   private drop(rel: string): boolean {
     this.search.delete(rel);
     this.texts.delete(rel);
@@ -330,12 +341,6 @@ function collectFields(
       if (set.size < 50) set.add(str);
     }
   }
-}
-
-function bodySnippet(entry: { body: string; line: number } | undefined, groups: string[][]): Snippet {
-  if (!entry) return { text: '', line: 0 };
-  const s = snippet(entry.body, groups);
-  return { text: s.text, line: s.line + entry.line };
 }
 
 /** Frontmatter object and the Markdown body of a whole file's text. */

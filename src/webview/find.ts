@@ -20,13 +20,18 @@ interface Match {
 
 interface FindState {
   query: string;
+  /** Word stems to highlight instead of the literal query (from Search Notes). */
+  terms?: string[];
   matches: Match[];
   active: number;
 }
 
 interface FindMeta {
   query?: string;
+  terms?: string[];
   active?: number;
+  /** Text of the line to land on: the first match inside a block containing it. */
+  anchor?: string;
 }
 
 const key = new PluginKey<FindState>('mdw-find');
@@ -44,17 +49,23 @@ export const findPlugin = $prose(
           if (!meta && !tr.docChanged) return prev;
           const query = meta?.query ?? prev.query;
           if (!query) return EMPTY;
-          const matches = meta?.query !== undefined || tr.docChanged ? findMatches(state.doc, query) : prev.matches;
+          const terms = meta?.query !== undefined ? meta.terms : prev.terms;
+          const matches =
+            meta?.query !== undefined || tr.docChanged ? findMatches(state.doc, query, terms) : prev.matches;
           let active = meta?.active ?? prev.active;
           if (meta?.query !== undefined && meta.active === undefined) {
-            // New query: pick the first match at or after the cursor.
-            const cursor = state.selection.from;
-            active = matches.findIndex((m) => m.from >= cursor);
+            if (meta.anchor) {
+              active = matches.findIndex((m) => blockText(state.doc, m.from).includes(meta.anchor!.toLowerCase()));
+            } else {
+              // New query: pick the first match at or after the cursor.
+              const cursor = state.selection.from;
+              active = matches.findIndex((m) => m.from >= cursor);
+            }
             if (active < 0) active = matches.length ? 0 : -1;
           }
           if (matches.length === 0) active = -1;
           else active = ((active % matches.length) + matches.length) % matches.length;
-          return { query, matches, active };
+          return { query, terms, matches, active };
         },
       },
       view: () => ({
@@ -79,15 +90,27 @@ export const findPlugin = $prose(
     })
 );
 
-/** Case-insensitive plain-text search over textblocks (code blocks excluded). */
-function findMatches(doc: ProseNode, query: string): Match[] {
+/**
+ * Case-insensitive search over textblocks (code blocks excluded): the literal
+ * query, or with `terms` any word starting with one of the stems.
+ */
+function findMatches(doc: ProseNode, query: string, terms?: string[]): Match[] {
   const needle = query.toLowerCase();
+  const re = terms?.length
+    ? new RegExp(`(?<![\\p{L}\\p{N}_])(?:${terms.map(escapeRe).join('|')})[\\p{L}\\p{N}_]*`, 'giu')
+    : undefined;
   const matches: Match[] = [];
   doc.descendants((node, pos) => {
     if (!node.isTextblock) return true;
     if (node.type.spec.code) return false;
     // Each leaf is one position, so string indexes map 1:1 onto positions.
     const text = node.textBetween(0, node.content.size, undefined, '\uFFFC').toLowerCase();
+    if (re) {
+      for (const m of text.matchAll(re)) {
+        matches.push({ from: pos + 1 + m.index!, to: pos + 1 + m.index! + m[0].length });
+      }
+      return false;
+    }
     let i = text.indexOf(needle);
     while (i >= 0) {
       matches.push({ from: pos + 1 + i, to: pos + 1 + i + needle.length });
@@ -96,6 +119,17 @@ function findMatches(doc: ProseNode, query: string): Match[] {
     return false;
   });
   return matches;
+}
+
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+/** Lower-cased text of the textblock containing `pos`. */
+function blockText(doc: ProseNode, pos: number): string {
+  const $pos = doc.resolve(pos);
+  const node = $pos.parent;
+  return node.textBetween(0, node.content.size, ' ', ' ').toLowerCase();
 }
 
 // ---------------------------------------------------------------------------
@@ -114,7 +148,12 @@ const BAR_HTML = `
     <svg viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M8 8.707l3.646 3.647.708-.707L8.707 8l3.647-3.646-.707-.708L8 7.293 4.354 3.646l-.708.708L7.293 8l-3.647 3.646.708.708L8 8.707z"/></svg>
   </button>`;
 
-export function installFind(getCtx: () => Ctx | undefined): void {
+export interface FindApi {
+  /** Opens the bar showing `query`, highlighting words that start with `terms`, landing on `anchor`. */
+  openWith(query: string, terms: string[], anchor?: string): void;
+}
+
+export function installFind(getCtx: () => Ctx | undefined): FindApi {
   let bar: HTMLElement | undefined;
   let input: HTMLInputElement | undefined;
   let count: HTMLElement | undefined;
@@ -164,7 +203,7 @@ export function installFind(getCtx: () => Ctx | undefined): void {
     dispatch({ active: s.active + dir });
   };
 
-  const open = (): void => {
+  const open = (preset?: { query: string; terms: string[]; anchor?: string }): void => {
     const v = view();
     if (!v) return;
     if (!bar) {
@@ -200,11 +239,16 @@ export function installFind(getCtx: () => Ctx | undefined): void {
         else if (act === 'close') close();
       });
     }
+    bar.hidden = false;
+    document.body.classList.add('mdw-find-open');
+    if (preset) {
+      input!.value = preset.query;
+      dispatch({ query: preset.query, terms: preset.terms, anchor: preset.anchor });
+      return;
+    }
     // Seed with the selected text, as VS Code does.
     const { from, to } = v.state.selection;
     const selected = from !== to ? v.state.doc.textBetween(from, to, ' ') : '';
-    bar.hidden = false;
-    document.body.classList.add('mdw-find-open');
     if (selected && !selected.includes('\n') && selected.length < 200) {
       input!.value = selected;
     }
@@ -255,4 +299,6 @@ export function installFind(getCtx: () => Ctx | undefined): void {
   onUpdate = (state) => {
     if (bar && !bar.hidden) sync(state);
   };
+
+  return { openWith: (query, terms, anchor) => open({ query, terms, anchor }) };
 }

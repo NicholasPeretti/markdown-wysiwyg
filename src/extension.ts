@@ -4,6 +4,7 @@ import { FileIndex, runQuery } from './query/host';
 import { createOption, renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
 import { optionsFor, type Relation } from './query/relations';
 import { complete } from './query/complete';
+import { SearchViewProvider, SEARCH_VIEW_ID, type OpenRequest } from './search_view';
 
 const VIEW_TYPE = 'markdownWysiwyg.editor';
 
@@ -45,7 +46,11 @@ export function activate(context: vscode.ExtensionContext) {
       vscode.window.setStatusBarMessage('Markdown query index rebuilt', 3000);
     }),
 
-    vscode.commands.registerCommand('markdownWysiwyg.search', () => searchNotes()),
+    vscode.commands.registerCommand('markdownWysiwyg.search', () => searchView.focus()),
+    vscode.window.registerWebviewViewProvider(SEARCH_VIEW_ID, searchView, {
+      webviewOptions: { retainContextWhenHidden: true },
+    }),
+    searchView,
 
     vscode.languages.registerCompletionItemProvider(
       'markdown',
@@ -98,88 +103,38 @@ function indexFor(uri: vscode.Uri): FileIndex | undefined {
   if (!index) {
     index = new FileIndex(folder);
     indexes.set(key, index);
+    searchView.watch(index);
   }
   return index;
 }
 
-interface SearchItem extends vscode.QuickPickItem {
-  uri: vscode.Uri;
-  line: number;
-}
+const searchView = new SearchViewProvider(
+  () => (vscode.workspace.workspaceFolders ?? []).map((f) => indexFor(f.uri)!),
+  openSearchResult
+);
 
-const OPEN_SOURCE_BUTTON: vscode.QuickInputButton = {
-  iconPath: new vscode.ThemeIcon('code'),
-  tooltip: 'Open source at match',
-};
-
-/** Ranked full-text search over the workspace's notes, in a quick pick. */
-async function searchNotes(): Promise<void> {
-  const folders = vscode.workspace.workspaceFolders ?? [];
-  if (!folders.length) {
-    void vscode.window.showInformationMessage('Open a folder to search its notes.');
-    return;
-  }
-  const all = folders.map((f) => indexFor(f.uri)!);
-  const pick = vscode.window.createQuickPick<SearchItem>();
-  pick.placeholder = 'Search notes (every word must match; ranked by relevance)';
-  pick.matchOnDescription = false;
-  pick.matchOnDetail = false;
-  // Keep BM25 order: VS Code would otherwise sort items by label match.
-  (pick as unknown as { sortByLabel: boolean }).sortByLabel = false;
-  pick.busy = true;
-  pick.show();
-  await Promise.all(all.map((index) => index.ensure()));
-  pick.busy = false;
-
-  let timer: NodeJS.Timeout | undefined;
-  const update = () => {
-    const query = pick.value.trim();
-    if (!query) {
-      pick.items = [];
-      return;
-    }
-    const hits = all
-      .flatMap((index) =>
-        index.find(query, 50).map((hit) => ({ hit, folder: index.folder, multi: folders.length > 1 }))
-      )
-      .sort((a, b) => b.hit.score - a.hit.score)
-      .slice(0, 50);
-    pick.items = hits.map(({ hit, folder, multi }) => ({
-      label: `$(markdown) ${hit.title ?? hit.name}`,
-      description: [multi ? folder.name : '', hit.folder, hit.title ? `${hit.name}.md` : ''].filter(Boolean).join(' › '),
-      detail: hit.snippet.text || undefined,
-      alwaysShow: true,
-      buttons: [OPEN_SOURCE_BUTTON],
-      uri: vscode.Uri.joinPath(folder.uri, hit.path),
-      line: hit.snippet.line,
-    }));
-  };
-  update();
-
-  pick.onDidChangeValue(() => {
-    clearTimeout(timer);
-    timer = setTimeout(update, 60);
-  });
-  pick.onDidAccept(() => {
-    const item = pick.selectedItems[0];
-    if (!item) return;
-    pick.hide();
-    codeModeUris.delete(item.uri.toString());
-    void vscode.commands.executeCommand('vscode.openWith', item.uri, VIEW_TYPE);
-  });
-  pick.onDidTriggerItemButton(async ({ item }) => {
-    pick.hide();
-    codeModeUris.add(item.uri.toString());
-    const doc = await vscode.workspace.openTextDocument(item.uri);
-    const editor = await vscode.window.showTextDocument(doc);
-    const pos = new vscode.Position(Math.min(item.line, doc.lineCount - 1), 0);
+/** Opens a search hit: the source at its line, or the WYSIWYG editor with the query highlighted. */
+async function openSearchResult(req: OpenRequest): Promise<void> {
+  const key = req.uri.toString();
+  if (req.source) {
+    codeModeUris.add(key);
+    const doc = await vscode.workspace.openTextDocument(req.uri);
+    const editor = await vscode.window.showTextDocument(doc, { preview: true });
+    const pos = new vscode.Position(Math.min(req.line ?? 0, doc.lineCount - 1), 0);
     editor.selection = new vscode.Selection(pos, pos);
     editor.revealRange(new vscode.Range(pos, pos), vscode.TextEditorRevealType.InCenter);
-  });
-  pick.onDidHide(() => {
-    clearTimeout(timer);
-    pick.dispose();
-  });
+    return;
+  }
+  codeModeUris.delete(key);
+  const find = { type: 'find', query: req.query, terms: req.terms, anchor: req.anchor };
+  const panel = panels.get(key);
+  if (panel) {
+    panel.reveal(undefined, false);
+    panel.webview.postMessage(find);
+    return;
+  }
+  pendingFind.set(key, find);
+  await vscode.commands.executeCommand('vscode.openWith', req.uri, VIEW_TYPE, { preview: true });
 }
 
 /** Completions inside ```query fences of a plain-text Markdown editor. */
@@ -245,6 +200,10 @@ let activeCustomEditorUri: vscode.Uri | undefined;
 let activePanel: vscode.WebviewPanel | undefined;
 /** URI whose WYSIWYG editor should take focus once it reports ready. */
 let pendingFocus: string | undefined;
+/** Open WYSIWYG panels by document URI. */
+const panels = new Map<string, vscode.WebviewPanel>();
+/** Find-bar messages for panels still being opened from the search view. */
+const pendingFind = new Map<string, object>();
 
 /** Resource of the active tab, regardless of editor type. For diff views, the modified side. */
 function activeTabUri(): vscode.Uri | undefined {
@@ -296,6 +255,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
   ): Promise<void> {
     activeCustomEditorUri = document.uri;
     activePanel = webviewPanel;
+    panels.set(document.uri.toString(), webviewPanel);
 
     webviewPanel.webview.options = {
       enableScripts: true,
@@ -350,6 +310,11 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
             webviewPanel.reveal(undefined, false);
           }
           pendingFocus = undefined;
+          const find = pendingFind.get(document.uri.toString());
+          if (find) {
+            pendingFind.delete(document.uri.toString());
+            webviewPanel.webview.postMessage(find);
+          }
           break;
         case 'tocVisible':
           this.context.globalState.update('tocVisible', message.value);
@@ -479,6 +444,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
       changeSub.dispose();
       indexSub?.dispose();
       viewStateSub.dispose();
+      if (panels.get(document.uri.toString()) === webviewPanel) panels.delete(document.uri.toString());
       if (activePanel === webviewPanel) {
         activePanel = undefined;
       }
