@@ -245,7 +245,7 @@ function html(webview: vscode.Webview): string {
   .status.ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   #results { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding-bottom: 12px; outline: none; }
   /* Folder and file rows stick while their children scroll, stacked by depth. */
-  .node > .row { position: sticky; z-index: 1; background: var(--vscode-sideBar-background); }
+  .node > .row { position: sticky; background: var(--vscode-sideBar-background); }
   .node > .row:hover { background: var(--vscode-list-hoverBackground); }
   .icon { flex: none; width: 16px; height: 16px; }
   .row {
@@ -423,6 +423,7 @@ function html(webview: vscode.Webview): string {
       row.style.paddingLeft = (8 + depth * 8) + 'px';
       row.style.top = 'calc(' + depth + ' * var(--row))';
       row.style.scrollMarginTop = row.style.top;
+      row.style.zIndex = String(20 - depth); // deeper rows slide behind ancestor headers
       const where = [hit.root, dirOf(hit.path)].filter(Boolean).join('/');
       row.title = (hit.root ? hit.root + '/' : '') + hit.path + (hit.title && hit.title !== hit.name ? '\\n' + hit.title : '');
       row.innerHTML = '<span class="twistie"></span>' + MD_ICON +
@@ -473,6 +474,8 @@ function html(webview: vscode.Webview): string {
         row.style.paddingLeft = (8 + depth * 8) + 'px';
         row.style.top = 'calc(' + depth + ' * var(--row))';
         row.style.scrollMarginTop = row.style.top;
+        row.style.zIndex = String(20 - depth);
+      row.style.zIndex = String(20 - depth); // deeper rows slide behind ancestor headers
         row.title = label;
         row.innerHTML = '<span class="twistie"></span><span class="label">' + esc(label) + '</span><span class="badge">' + count(d) + '</span><span class="desc"></span>';
         node.append(row);
