@@ -96,38 +96,39 @@ export function renderMermaidPreview(language: string, content: string, apply: A
 
 // ---- Built-in semantic palette for flowcharts ----
 //
-// Blue = compute, orange = data, neutrals = people/external, red-orange =
-// danger. Classes are injected as `classDef`s so `Node:::db` works without any
-// setup; a user-defined classDef with the same name wins.
+// Monochrome: roles are told apart by grey level (frontend light → backend mid
+// → db dark), dashes (queue, muted), a faded outline (external) and an inverted
+// fill (danger). Classes are injected as `classDef`s so `Node:::db` works
+// without any setup; a user-defined classDef with the same name wins.
 
 interface Swatch {
   fill: string;
   stroke: string;
   color: string;
-  dash?: boolean;
+  dash?: string;
 }
 type Palette = Record<string, Swatch>;
 
 const LIGHT_PALETTE: Palette = {
-  user: { fill: '#f3ede3', stroke: '#a8946f', color: '#1f2937' },
-  frontend: { fill: '#e8f1fc', stroke: '#4a8ad8', color: '#1f2937' },
-  backend: { fill: '#a9c6ec', stroke: '#2a5fb0', color: '#0f172a' },
-  db: { fill: '#f2b26a', stroke: '#c2651a', color: '#1f2937' },
-  queue: { fill: '#fbe0bf', stroke: '#d9892a', color: '#1f2937' },
-  external: { fill: '#eceef1', stroke: '#8b94a3', color: '#1f2937' },
-  danger: { fill: '#f6cfc3', stroke: '#c0452c', color: '#1f2937' },
-  muted: { fill: '#f1f2f4', stroke: '#a7adb6', color: '#6b7280', dash: true },
+  user: { fill: '#ffffff', stroke: '#111111', color: '#111111' },
+  frontend: { fill: '#f2f2f2', stroke: '#111111', color: '#111111' },
+  backend: { fill: '#d9d9d9', stroke: '#111111', color: '#111111' },
+  db: { fill: '#8c8c8c', stroke: '#111111', color: '#ffffff' },
+  queue: { fill: '#ffffff', stroke: '#111111', color: '#111111', dash: '6 3' },
+  external: { fill: '#ffffff', stroke: '#777777', color: '#444444' },
+  danger: { fill: '#2b2b2b', stroke: '#111111', color: '#ffffff' },
+  muted: { fill: '#ffffff', stroke: '#9a9a9a', color: '#777777', dash: '3 3' },
 };
 
 const DARK_PALETTE: Palette = {
-  user: { fill: '#3d3628', stroke: '#c9b58e', color: '#f0e9dc' },
-  frontend: { fill: '#243447', stroke: '#6aa6ea', color: '#e6eef8' },
-  backend: { fill: '#2c4a78', stroke: '#78aef0', color: '#eaf1fb' },
-  db: { fill: '#a4601f', stroke: '#f0a860', color: '#ffffff' },
-  queue: { fill: '#4d3a1a', stroke: '#e2a24a', color: '#f6ead6' },
-  external: { fill: '#33363b', stroke: '#8c95a3', color: '#e1e4e9' },
-  danger: { fill: '#4b2a24', stroke: '#e2765e', color: '#f7e2dc' },
-  muted: { fill: '#2a2d31', stroke: '#6b7280', color: '#9ca3af', dash: true },
+  user: { fill: '#1e1e1e', stroke: '#e6e6e6', color: '#e6e6e6' },
+  frontend: { fill: '#2e2e2e', stroke: '#e6e6e6', color: '#e6e6e6' },
+  backend: { fill: '#4a4a4a', stroke: '#e6e6e6', color: '#f2f2f2' },
+  db: { fill: '#8a8a8a', stroke: '#e6e6e6', color: '#111111' },
+  queue: { fill: '#1e1e1e', stroke: '#e6e6e6', color: '#e6e6e6', dash: '6 3' },
+  external: { fill: '#1e1e1e', stroke: '#8a8a8a', color: '#bdbdbd' },
+  danger: { fill: '#e6e6e6', stroke: '#ffffff', color: '#111111' },
+  muted: { fill: '#1e1e1e', stroke: '#6a6a6a', color: '#8a8a8a', dash: '3 3' },
 };
 
 export const PALETTE_CLASSES = Object.keys(LIGHT_PALETTE);
@@ -141,7 +142,7 @@ function withPalette(text: string): string {
   const lines: string[] = [];
   for (const [name, s] of Object.entries(palette)) {
     if (new RegExp(`^\\s*classDef\\s+${name}\\b`, 'm').test(text)) continue;
-    const dash = s.dash ? ',stroke-dasharray:4 3' : '';
+    const dash = s.dash ? `,stroke-dasharray:${s.dash}` : '';
     lines.push(`classDef ${name} fill:${s.fill},stroke:${s.stroke},color:${s.color}${dash}`);
   }
   return lines.length ? `${text}\n${lines.join('\n')}` : text;
