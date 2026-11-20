@@ -1253,6 +1253,11 @@ body {
   margin-bottom: 2px;
 }
 
+/* Rows inside a group sit under the band's label, past the chevron. */
+.milkdown .ProseMirror .mdw-qt tbody.mdw-qt-group tr:not(.mdw-qt-group-head) > td:first-child {
+  padding-left: 26px;
+}
+
 .mdw-qt-chevron {
   flex: none;
   color: var(--vscode-icon-foreground, currentColor);

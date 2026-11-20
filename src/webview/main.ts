@@ -6,6 +6,7 @@ import { emojiPlugin } from './emoji';
 import { addCalloutSlashItems, calloutPlugin, unescapeCallouts } from './callouts';
 import { applySlashAliases } from './slash_aliases';
 import { installOverflowWatcher } from './overflow';
+import { installStableBlocks } from './stable_blocks';
 import { addMermaidSlashItem, installMermaidViewer, renderMermaidPreview } from './mermaid';
 import {
   handleQueryMessage,
@@ -236,6 +237,7 @@ installLinkHandler(
   (direction) => vscode.postMessage({ type: 'navigate', direction })
 );
 installOverflowWatcher(document.body);
+installStableBlocks(document.body);
 installMermaidViewer();
 const find: FindApi = installFind(() => crepe?.editor.ctx);
 installBlockMenu(() => (crepe ? crepe.editor.ctx.get(editorViewCtx) : null));

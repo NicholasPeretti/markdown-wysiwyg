@@ -7,9 +7,9 @@
  * clip`, which is *not* a scroll container) and are scrolled by translating
  * the table from wheel/trackpad events, with a slim custom scrollbar.
  */
-const WRAPPERS = ['.milkdown-table-block .table-wrapper', '.mdw-qt-scroll'];
-const SELECTOR = WRAPPERS.join(', ');
-const TABLES = WRAPPERS.map((w) => `${w} > table`).join(', ');
+const WRAPPERS = [".milkdown-table-block .table-wrapper", ".mdw-qt-scroll"];
+const SELECTOR = WRAPPERS.join(", ");
+const TABLES = WRAPPERS.map((w) => `${w} > table`).join(", ");
 
 interface ScrollState {
   x: number;
@@ -32,7 +32,7 @@ export function installOverflowWatcher(root: HTMLElement): void {
       if (seen.has(el)) return;
       seen.add(el);
       ro.observe(el);
-      const table = el.querySelector(':scope > table');
+      const table = el.querySelector(":scope > table");
       if (table) ro.observe(table);
       update(el);
     });
@@ -49,24 +49,35 @@ export function installOverflowWatcher(root: HTMLElement): void {
   }).observe(root, { childList: true, subtree: true });
   scan();
 
-  root.addEventListener('wheel', onWheel, { passive: false });
-  document.addEventListener('selectionchange', revealSelectedCell);
+  root.addEventListener("wheel", onWheel, { passive: false });
+  document.addEventListener("selectionchange", revealSelectedCell);
 }
 
 /** A clip container never scrolls on its own, so follow the caret into hidden cells. */
 function revealSelectedCell(): void {
   const node = document.getSelection()?.anchorNode;
   const el = node instanceof Element ? node : node?.parentElement;
-  const cell = el?.closest<HTMLElement>('td, th');
+  const cell = el?.closest<HTMLElement>("td, th");
   const wrapper = cell?.closest<HTMLElement>(SELECTOR);
-  if (!cell || !wrapper || !wrapper.classList.contains('mdw-overflow')) return;
+  if (!cell || !wrapper || !wrapper.classList.contains("mdw-overflow")) return;
   const state = states.get(wrapper);
   if (!state) return;
+  // Typing in a form control selects within it; a full-width "+ New" cell would
+  // otherwise drag the table to its far right edge on every keystroke.
+  const active = document.activeElement;
+  const target =
+    active instanceof HTMLElement &&
+    active.matches("input, textarea, select") &&
+    cell.contains(active)
+      ? active
+      : cell;
   const view = wrapper.getBoundingClientRect();
-  const rect = cell.getBoundingClientRect();
+  const rect = target.getBoundingClientRect();
   const pad = 16;
-  if (rect.left < view.left) setScroll(wrapper, state, state.x - (view.left - rect.left) - pad);
-  else if (rect.right > view.right) setScroll(wrapper, state, state.x + (rect.right - view.right) + pad);
+  if (rect.left < view.left || rect.width > view.width)
+    setScroll(wrapper, state, state.x - (view.left - rect.left) - pad);
+  else if (rect.right > view.right)
+    setScroll(wrapper, state, state.x + (rect.right - view.right) + pad);
 }
 
 const MAX_SIZED_COLUMNS = 24;
@@ -81,15 +92,17 @@ function sizeTextColumns(table: HTMLElement): void {
   const wrapper = table.parentElement;
   if (!wrapper) return;
   const longest: number[] = [];
-  table.querySelectorAll<HTMLElement>(':scope > tbody > tr, :scope > thead > tr').forEach((row) => {
-    Array.from(row.children).forEach((cell, i) => {
-      const len = (cell.textContent ?? '').trim().length;
-      longest[i] = Math.max(longest[i] ?? 0, len);
+  table
+    .querySelectorAll<HTMLElement>(":scope > tbody > tr, :scope > thead > tr")
+    .forEach((row) => {
+      Array.from(row.children).forEach((cell, i) => {
+        const len = (cell.textContent ?? "").trim().length;
+        longest[i] = Math.max(longest[i] ?? 0, len);
+      });
     });
-  });
   for (let i = 0; i < MAX_SIZED_COLUMNS; i++) {
     const len = longest[i] ?? 0;
-    const width = len >= 160 ? '24em' : len >= 60 ? '16em' : '';
+    const width = len >= 160 ? "24em" : len >= 60 ? "16em" : "";
     const prop = `--mdw-col-${i + 1}`;
     if (wrapper.style.getPropertyValue(prop) !== width) {
       if (width) wrapper.style.setProperty(prop, width);
@@ -99,7 +112,7 @@ function sizeTextColumns(table: HTMLElement): void {
 }
 
 function tableOf(wrapper: HTMLElement): HTMLElement | null {
-  return wrapper.querySelector<HTMLElement>(':scope > table');
+  return wrapper.querySelector<HTMLElement>(":scope > table");
 }
 
 function maxScroll(wrapper: HTMLElement): number {
@@ -114,7 +127,7 @@ function update(el: HTMLElement): void {
   if (!tableOf(wrapper)) return;
   const max = maxScroll(wrapper);
   const overflowing = max > 1;
-  wrapper.classList.toggle('mdw-overflow', overflowing);
+  wrapper.classList.toggle("mdw-overflow", overflowing);
   if (overflowing) {
     const state = ensureState(wrapper);
     setScroll(wrapper, state, Math.min(state.x, max));
@@ -126,11 +139,11 @@ function update(el: HTMLElement): void {
 function ensureState(wrapper: HTMLElement): ScrollState {
   let state = states.get(wrapper);
   if (state) return state;
-  const bar = document.createElement('div');
-  bar.className = 'mdw-hscroll';
-  bar.contentEditable = 'false';
-  const thumb = document.createElement('div');
-  thumb.className = 'mdw-hscroll-thumb';
+  const bar = document.createElement("div");
+  bar.className = "mdw-hscroll";
+  bar.contentEditable = "false";
+  const thumb = document.createElement("div");
+  thumb.className = "mdw-hscroll-thumb";
   bar.appendChild(thumb);
   wrapper.appendChild(bar);
   state = { x: 0, bar, thumb };
@@ -144,24 +157,27 @@ function setScroll(wrapper: HTMLElement, state: ScrollState, x: number): void {
   if (!table) return;
   const max = maxScroll(wrapper);
   state.x = Math.max(0, Math.min(max, x));
-  table.style.transform = state.x ? `translateX(${-state.x}px)` : '';
+  table.style.transform = state.x ? `translateX(${-state.x}px)` : "";
   const available = wrapper.parentElement?.clientWidth ?? wrapper.clientWidth;
   const ratio = available / (available + max);
   state.thumb.style.width = `${Math.max(8, ratio * 100)}%`;
   state.thumb.style.left = `${(state.x / (available + max)) * 100}%`;
-  state.bar.classList.toggle('mdw-hscroll-start', state.x <= 0);
-  state.bar.classList.toggle('mdw-hscroll-end', state.x >= max - 0.5);
+  state.bar.classList.toggle("mdw-hscroll-start", state.x <= 0);
+  state.bar.classList.toggle("mdw-hscroll-end", state.x >= max - 0.5);
 }
 
 function flash(state: ScrollState): void {
-  state.bar.classList.add('mdw-hscroll-active');
+  state.bar.classList.add("mdw-hscroll-active");
   window.clearTimeout(state.hideTimer);
-  state.hideTimer = window.setTimeout(() => state.bar.classList.remove('mdw-hscroll-active'), 800);
+  state.hideTimer = window.setTimeout(
+    () => state.bar.classList.remove("mdw-hscroll-active"),
+    800,
+  );
 }
 
 function onWheel(e: WheelEvent): void {
   const wrapper = (e.target as HTMLElement).closest<HTMLElement>(SELECTOR);
-  if (!wrapper || !wrapper.classList.contains('mdw-overflow')) return;
+  if (!wrapper || !wrapper.classList.contains("mdw-overflow")) return;
   const state = states.get(wrapper);
   if (!state) return;
   const dx = e.shiftKey && !e.deltaX ? e.deltaY : e.deltaX;
@@ -175,7 +191,7 @@ function onWheel(e: WheelEvent): void {
 }
 
 function installThumbDrag(wrapper: HTMLElement, state: ScrollState): void {
-  state.thumb.addEventListener('pointerdown', (down) => {
+  state.thumb.addEventListener("pointerdown", (down) => {
     down.preventDefault();
     down.stopPropagation();
     const startX = down.clientX;
@@ -183,14 +199,15 @@ function installThumbDrag(wrapper: HTMLElement, state: ScrollState): void {
     const available = wrapper.parentElement?.clientWidth ?? wrapper.clientWidth;
     const max = maxScroll(wrapper);
     const scale = (available + max) / state.bar.clientWidth;
-    state.bar.classList.add('mdw-hscroll-dragging');
-    const move = (ev: PointerEvent) => setScroll(wrapper, state, startScroll + (ev.clientX - startX) * scale);
+    state.bar.classList.add("mdw-hscroll-dragging");
+    const move = (ev: PointerEvent) =>
+      setScroll(wrapper, state, startScroll + (ev.clientX - startX) * scale);
     const up = () => {
-      state.bar.classList.remove('mdw-hscroll-dragging');
-      window.removeEventListener('pointermove', move);
-      window.removeEventListener('pointerup', up);
+      state.bar.classList.remove("mdw-hscroll-dragging");
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
     };
-    window.addEventListener('pointermove', move);
-    window.addEventListener('pointerup', up);
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
   });
 }

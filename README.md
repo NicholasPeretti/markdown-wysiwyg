@@ -54,7 +54,7 @@ columns: file.name, title, status, file.modified
 | `limit` | Max rows (default 50; no cap when `page_size` is set). |
 | `page_size` | Rows per page; shows a ‹ › pager in the table header so every matching file is reachable without a tall table. Alias: `page`. |
 | `columns` | Columns to show. Default: `file.name, file.path, file.modified` plus any fields used in `where`/`sort`. |
-| `group` | Group rows under a folding band per value of this field (a file with an array value, e.g. `tags`, appears in each of its groups). Groups follow the `sort` direction of that field, if any; `page_size` is ignored. |
+| `group` | Group rows under a folding band per value of this field (a file with an array value, e.g. `tags`, appears in each of its groups). Groups start folded; click a band to open it (⌥-click for all), rows sit indented under the label. Groups follow the `sort` direction of that field, if any; `page_size` is ignored. |
 | `distinct` | List the unique values of this field with a file count instead of files (columns `<field>`, `count`). Default sort: `count desc`; `limit` caps the number of values. Cannot be combined with `group`. |
 
 Fields: `file.path`, `file.name`, `file.folder`, `file.modified`, `file.created`, `file.size`, and any frontmatter field (`status`, `tags`, `meta.owner`, optionally prefixed `fm.`). Values: `"strings"`, numbers, `true`/`false`/`null`, `/regex/i`, `YYYY-MM-DD`, and `today`/`now ± 7d|2w|1m|1y`. Empty fields (missing, `null`, `""` or an empty list such as a relation with no items) compare like Notion: `== null` and `== ""` match them, `!=` is true, everything else is false.
