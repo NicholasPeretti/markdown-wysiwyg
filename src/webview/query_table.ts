@@ -287,51 +287,59 @@ const CHECK_ICON =
 const UNCHECK_ICON =
   '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/></svg>';
 
-/**
- * The `⊟ field ▾` chip next to the filter. On grouped tables it folds/sorts/removes
- * the groups; otherwise it offers the columns to group by.
- */
-function groupChipHtml(query: Query, columns: string[]): string {
-  const field = query.group;
-  const items = field
-    ? `<button data-act="group-expand" role="menuitem">Expand all</button>
-       <button data-act="group-collapse" role="menuitem">Collapse all</button>
-       <hr>
-       <button data-act="group-sort" data-dir="asc" role="menuitem">Sort groups A → Z</button>
-       <button data-act="group-sort" data-dir="desc" role="menuitem">Sort groups Z → A</button>
-       <hr>
-       <button data-act="group-remove" role="menuitem">Remove grouping</button>`
-    : columns
-        .filter((c) => !c.startsWith('file.') || c === 'file.folder')
-        .map((c) => `<button data-act="group-set" data-field="${escapeAttr(c)}" role="menuitem">${escapeHtml(c)}</button>`)
-        .join('');
-  if (!items) return '';
-  return `<span class="mdw-qt-menu mdw-qt-group-chip${field ? ' mdw-qt-grouped' : ''}">
-    <button data-act="menu" class="mdw-qt-chip" title="${field ? 'Grouping options' : 'Group by…'}" aria-haspopup="menu">
-      ${GROUP_ICON}<span>${field ? escapeHtml(field) : 'Group'}</span><span class="mdw-qt-caret" aria-hidden="true">▾</span>
+/** The `⊟ field ▾` chip, shown only on grouped tables: fold, sort and remove the groups. */
+function groupChipHtml(field: string | undefined): string {
+  if (!field) return '';
+  return `<span class="mdw-qt-menu mdw-qt-group-chip">
+    <button data-act="menu" class="mdw-qt-chip" title="Grouping options" aria-haspopup="menu">
+      ${GROUP_ICON}<span>${escapeHtml(field)}</span><span class="mdw-qt-caret" aria-hidden="true">▾</span>
     </button>
-    <span class="mdw-qt-menu-list" role="menu">${items}</span>
+    <span class="mdw-qt-menu-list" role="menu">
+      <button data-act="group-expand" role="menuitem">Expand all</button>
+      <button data-act="group-collapse" role="menuitem">Collapse all</button>
+      <hr>
+      <button data-act="group-sort" data-dir="asc" role="menuitem">Sort groups A → Z</button>
+      <button data-act="group-sort" data-dir="desc" role="menuitem">Sort groups Z → A</button>
+      <hr>
+      <button data-act="group-remove" role="menuitem">Remove grouping</button>
+    </span>
   </span>`;
 }
 
-const menuHtml = (filter: string) => `<span class="mdw-qt-left">${filter}</span><span class="mdw-qt-actions">
+/** "Group by <column>" entries for the ⋯ menu; the active field is ticked and removes the grouping. */
+function groupByItems(query: Query | undefined, columns: string[]): string {
+  if (!query || query.distinct) return '';
+  const fields = columns.filter((c) => !c.startsWith('file.') || c === 'file.folder');
+  if (query.group && !fields.includes(query.group)) fields.unshift(query.group);
+  const items = fields
+    .map((c) => {
+      const active = query.group === c;
+      return `<button data-act="${active ? 'group-remove' : 'group-set'}" data-field="${escapeAttr(c)}" role="menuitemcheckbox" aria-checked="${active}" class="${active ? 'mdw-qt-checked' : ''}">Group by ${escapeHtml(c)}</button>`;
+    })
+    .join('');
+  return items ? `<hr>${items}` : '';
+}
+
+const menuHtml = (filter: string, query?: Query, columns: string[] = []) => `${filter}<span class="mdw-qt-actions">
+  ${groupChipHtml(query?.group)}
   <button data-act="edit" class="mdw-qt-edit" title="Edit query" aria-pressed="false">${EDIT_ICON}</button>
   <span class="mdw-qt-menu">
     <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
     <span class="mdw-qt-menu-list" role="menu">
       <button data-act="copy" role="menuitem">Copy as Markdown</button>
       <button data-act="copy-query" role="menuitem">Copy query</button>
+      ${groupByItems(query, columns)}
     </span>
   </span>
 </span>`;
 
-function renderShell(id: string, inner: string, withMenu = true, filter = ''): HTMLElement {
+function renderShell(id: string, inner: string, withMenu = true, filter = '', query?: Query, columns?: string[]): HTMLElement {
   const el = document.createElement('div');
   el.className = 'mdw-qt';
   el.dataset.qid = id;
   el.innerHTML = inner;
   if (withMenu) {
-    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-toolbar">${menuHtml(filter)}</div>`);
+    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-toolbar">${menuHtml(filter, query, columns)}</div>`);
   }
   return el;
 }
@@ -373,7 +381,7 @@ function render(id: string, state: BlockState): HTMLElement {
       ${FILTER_ICON}
       <input type="text" placeholder="Filter rows…" spellcheck="false" value="${escapeAttr(state.search)}" aria-label="Filter rows">
       <button data-act="clear-filter" title="Clear filter">×</button>
-    </label>${groupChipHtml(query, result.columns)}`;
+    </label>`;
 
   const head = result.columns
     .map((c) => {
@@ -443,7 +451,9 @@ function render(id: string, state: BlockState): HTMLElement {
       ${pager}
     </div>`,
     true,
-    filter
+    filter,
+    query,
+    result.columns
   );
 }
 
