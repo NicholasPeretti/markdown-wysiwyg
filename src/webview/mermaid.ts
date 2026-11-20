@@ -85,6 +85,75 @@ export function renderMermaidPreview(language: string, content: string, apply: A
   return undefined;
 }
 
+// ---- Built-in semantic palette for flowcharts ----
+//
+// Blue = compute, orange = data, neutrals = people/external, red-orange =
+// danger. Classes are injected as `classDef`s so `Node:::db` works without any
+// setup; a user-defined classDef with the same name wins.
+
+interface Swatch {
+  fill: string;
+  stroke: string;
+  color: string;
+  dash?: boolean;
+}
+type Palette = Record<string, Swatch>;
+
+const LIGHT_PALETTE: Palette = {
+  user: { fill: '#f3ede3', stroke: '#a8946f', color: '#1f2937' },
+  frontend: { fill: '#e8f1fc', stroke: '#4a8ad8', color: '#1f2937' },
+  backend: { fill: '#a9c6ec', stroke: '#2a5fb0', color: '#0f172a' },
+  db: { fill: '#f2b26a', stroke: '#c2651a', color: '#1f2937' },
+  queue: { fill: '#fbe0bf', stroke: '#d9892a', color: '#1f2937' },
+  external: { fill: '#eceef1', stroke: '#8b94a3', color: '#1f2937' },
+  danger: { fill: '#f6cfc3', stroke: '#c0452c', color: '#1f2937' },
+  muted: { fill: '#f1f2f4', stroke: '#a7adb6', color: '#6b7280', dash: true },
+};
+
+const DARK_PALETTE: Palette = {
+  user: { fill: '#3d3628', stroke: '#c9b58e', color: '#f0e9dc' },
+  frontend: { fill: '#243447', stroke: '#6aa6ea', color: '#e6eef8' },
+  backend: { fill: '#2c4a78', stroke: '#78aef0', color: '#eaf1fb' },
+  db: { fill: '#a4601f', stroke: '#f0a860', color: '#ffffff' },
+  queue: { fill: '#4d3a1a', stroke: '#e2a24a', color: '#f6ead6' },
+  external: { fill: '#33363b', stroke: '#8c95a3', color: '#e1e4e9' },
+  danger: { fill: '#4b2a24', stroke: '#e2765e', color: '#f7e2dc' },
+  muted: { fill: '#2a2d31', stroke: '#6b7280', color: '#9ca3af', dash: true },
+};
+
+export const PALETTE_CLASSES = Object.keys(LIGHT_PALETTE);
+
+const FLOWCHART_RE = /^\s*(?:%%.*\n\s*)*(?:flowchart|graph)\b/;
+
+/** Appends the built-in classDefs (minus any the author redefined) to flowcharts. */
+function withPalette(text: string): string {
+  if (!FLOWCHART_RE.test(text)) return text;
+  const palette = isDark() ? DARK_PALETTE : LIGHT_PALETTE;
+  const lines: string[] = [];
+  for (const [name, s] of Object.entries(palette)) {
+    if (new RegExp(`^\\s*classDef\\s+${name}\\b`, 'm').test(text)) continue;
+    const dash = s.dash ? ',stroke-dasharray:4 3' : '';
+    lines.push(`classDef ${name} fill:${s.fill},stroke:${s.stroke},color:${s.color}${dash}`);
+  }
+  return lines.length ? `${text}\n${lines.join('\n')}` : text;
+}
+
+/**
+ * The hand-drawn look hatches node fills with 1.5px strokes. Thickening those
+ * strokes merges the hatching into a solid fill that still follows the sketchy
+ * outline (rough.js hard-codes the hachure style, so this is the only knob).
+ */
+function solidFills(svg: string): string {
+  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
+  const paths = doc.querySelectorAll('.rough-node path[stroke-width="1.5"]');
+  if (!paths.length) return svg;
+  paths.forEach((p) => {
+    p.setAttribute('stroke-width', '4');
+    p.setAttribute('stroke-linecap', 'butt');
+  });
+  return new XMLSerializer().serializeToString(doc.documentElement);
+}
+
 const DIRECTION_RE = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TD|TB|BT)\b/m;
 /** Only switch orientation when it buys at least this much extra scale. */
 const REORIENT_GAIN = 1.1;
@@ -128,7 +197,7 @@ async function draw(text: string, apply: Apply): Promise<void> {
   try {
     const mermaid = await load();
     configure(mermaid);
-    const svg = await renderBestOrientation(mermaid, id, text);
+    const svg = solidFills(await renderBestOrientation(mermaid, id, withPalette(text)));
     // Natural width caps the upscaling (see .mdw-mermaid-stage svg rules).
     const nat = viewBoxSize(svg);
     const size = nat ? ` style="--mdw-nat-w: ${nat.w}px"` : '';
