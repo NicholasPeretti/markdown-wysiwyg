@@ -1797,6 +1797,15 @@ body {
   max-width: 100%;
   height: auto;
 }
+/*
+ * Mermaid wraps HTML labels in <p>, sized in a sandbox without our editor
+ * paragraph padding/margins; reset them so descenders are not clipped.
+ */
+.milkdown .ProseMirror .mdw-mermaid p,
+.mdw-mermaid-overlay p {
+  margin: 0;
+  padding: 0;
+}
 .milkdown .milkdown-code-block .preview .mdw-mermaid-empty,
 .milkdown .milkdown-code-block .preview .mdw-mermaid-error {
   font-size: 12px;
