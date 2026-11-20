@@ -978,7 +978,7 @@ body {
   text-align: left;
 }
 
-.mdw-qt-menu.open .mdw-qt-menu-list {
+.mdw-qt-menu.open > .mdw-qt-menu-list {
   display: flex;
 }
 
