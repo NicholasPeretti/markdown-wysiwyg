@@ -44,6 +44,8 @@ function configure(mermaid: Mermaid): void {
     startOnLoad: false,
     securityLevel: 'strict',
     theme: dark ? 'dark' : 'default',
+    // Sketchy, Excalidraw-like shapes and edges.
+    look: 'handDrawn',
     fontFamily: cssVar('--vscode-font-family') || 'inherit',
     themeVariables: {
       fontFamily: cssVar('--vscode-font-family') || 'inherit',
