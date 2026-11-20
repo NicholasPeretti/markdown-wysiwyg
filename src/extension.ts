@@ -263,11 +263,18 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     activePanel = webviewPanel;
     panels.set(document.uri.toString(), webviewPanel);
 
+    // Local images (`![](assets/x.png)`) resolve against the document's folder,
+    // so the webview may load from the workspace and from wherever the file is.
+    const docFolder = vscode.Uri.joinPath(document.uri, '..');
     webviewPanel.webview.options = {
       enableScripts: true,
-      localResourceRoots: [vscode.Uri.joinPath(this.context.extensionUri, 'dist')],
+      localResourceRoots: [
+        vscode.Uri.joinPath(this.context.extensionUri, 'dist'),
+        ...(vscode.workspace.workspaceFolders ?? []).map((f) => f.uri),
+        docFolder,
+      ],
     };
-    webviewPanel.webview.html = this.getHtml(webviewPanel.webview);
+    webviewPanel.webview.html = this.getHtml(webviewPanel.webview, docFolder);
 
     // True while an edit from the webview is being applied, to avoid echoing
     // the document-change event back into the webview.
@@ -499,7 +506,8 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
     });
   }
 
-  private getHtml(webview: vscode.Webview): string {
+  private getHtml(webview: vscode.Webview, docFolder: vscode.Uri): string {
+    const baseUri = `${webview.asWebviewUri(docFolder)}/`;
     const scriptUri = webview.asWebviewUri(
       vscode.Uri.joinPath(this.context.extensionUri, 'dist', 'webview.js')
     );
@@ -515,6 +523,7 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
   <meta http-equiv="Content-Security-Policy"
         content="default-src 'none'; style-src ${webview.cspSource} 'unsafe-inline'; font-src ${webview.cspSource} data:; img-src ${webview.cspSource} https: data:; script-src 'nonce-${nonce}' ${webview.cspSource};">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <base href="${baseUri}">
   <link rel="stylesheet" href="${styleUri}">
   <title>Markdown WYSIWYG</title>
 </head>
