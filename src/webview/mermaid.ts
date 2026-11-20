@@ -51,6 +51,15 @@ function configure(mermaid: Mermaid): void {
       fontFamily: cssVar('--vscode-font-family') || 'inherit',
       // Edge labels sit on the editor background rather than in grey boxes.
       edgeLabelBackground: cssVar('--vscode-editor-background') || undefined,
+      // Neutral defaults so unclassed nodes and subgraphs sit quietly next to the palette.
+      primaryColor: dark ? '#2f3338' : '#f1f2f4',
+      primaryBorderColor: dark ? '#7a828e' : '#9aa3af',
+      primaryTextColor: dark ? '#e5e7eb' : '#1f2937',
+      mainBkg: dark ? '#2f3338' : '#f1f2f4',
+      nodeBorder: dark ? '#7a828e' : '#9aa3af',
+      nodeTextColor: dark ? '#e5e7eb' : '#1f2937',
+      clusterBkg: dark ? '#25282c' : '#f7f8fa',
+      clusterBorder: dark ? '#4b515b' : '#c5cad3',
     },
   });
 }
@@ -144,14 +153,14 @@ function withPalette(text: string): string {
  * outline (rough.js hard-codes the hachure style, so this is the only knob).
  */
 function solidFills(svg: string): string {
-  const doc = new DOMParser().parseFromString(svg, 'image/svg+xml');
-  const paths = doc.querySelectorAll('.rough-node path[stroke-width="1.5"]');
-  if (!paths.length) return svg;
-  paths.forEach((p) => {
+  // HTML parsing: labels contain unclosed <br> tags that an XML parser rejects.
+  const host = document.createElement('div');
+  host.innerHTML = svg;
+  host.querySelectorAll('.rough-node path[stroke-width="1.5"]').forEach((p) => {
     p.setAttribute('stroke-width', '4');
     p.setAttribute('stroke-linecap', 'butt');
   });
-  return new XMLSerializer().serializeToString(doc.documentElement);
+  return host.innerHTML;
 }
 
 const DIRECTION_RE = /^(\s*(?:flowchart|graph)\s+)(LR|RL|TD|TB|BT)\b/m;
