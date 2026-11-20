@@ -26,17 +26,24 @@ export interface FrontmatterPanel {
 
 type Entry = [key: string, value: unknown];
 
+/** Why the frontmatter could not be shown as properties, for the raw view. */
+let parseError: string | undefined;
+
 function parseEntries(raw: string): Entry[] | null {
+  parseError = undefined;
   if (raw.trim() === '') {
     return [];
   }
   try {
     const doc = YAML.parse(raw);
     if (doc === null || typeof doc !== 'object' || Array.isArray(doc)) {
+      parseError = 'Frontmatter must be a mapping of keys to values.';
       return null;
     }
     return Object.entries(doc);
-  } catch {
+  } catch (err) {
+    const msg = (err instanceof Error ? err.message.split('\n')[0] : String(err)).replace(/:$/, '');
+    parseError = `Frontmatter is not valid YAML (${msg}). Query tables ignore this file's fields until it is fixed.`;
     return null;
   }
 }
@@ -133,6 +140,12 @@ export function createFrontmatterPanel(
     modeButton.textContent = structured ? '{ }' : '⊞';
     modeButton.style.display = entries === null ? 'none' : 'inline-block';
     body.replaceChildren(structured ? renderRows(entries as Entry[]) : renderRaw());
+    if (!structured && parseError) {
+      const note = document.createElement('div');
+      note.className = 'mdw-fm-error';
+      note.textContent = parseError;
+      body.prepend(note);
+    }
   };
 
   const renderRaw = (): HTMLElement => {

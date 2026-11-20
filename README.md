@@ -10,6 +10,7 @@ Edit markdown files in a Notion-style WYSIWYG editor (powered by [Milkdown](http
 - **One-click switching** — toolbar icons in the editor title bar, or the command palette:
   - `Markdown: Open in WYSIWYG Mode`
   - `Markdown: Open in Code Mode`
+- **Properties panel** — frontmatter renders as Notion-style properties above the document; `{ }` toggles the raw YAML. When the YAML does not parse (e.g. an unquoted `title: a: b`), the panel shows the error above the raw text and query tables see the file without fields until it is fixed.
 - **Live sync** — the WYSIWYG view edits the real `TextDocument`, so undo/redo, dirty state, and save all behave normally.
 - **Callouts** — GitHub-style alerts (`> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`, `[!WARNING]`, `[!CAUTION]`) and Obsidian's extra kinds (`[!ABSTRACT]`, `[!INFO]`, `[!TODO]`, `[!SUCCESS]`, `[!QUESTION]`, `[!FAILURE]`, `[!DANGER]`, `[!BUG]`, `[!EXAMPLE]`, `[!QUOTE]`, plus aliases such as `[!TLDR]`, `[!HINT]`, `[!HELP]`, `[!ERROR]`) render as colored callouts. Insert one from the `/` menu, or click a callout's title to change its kind.
 - **Subscript / superscript** — `H<sub>2</sub>O`, `x<sup>2</sup>` render inline; type the tags to create them, cursor inside reveals them.
