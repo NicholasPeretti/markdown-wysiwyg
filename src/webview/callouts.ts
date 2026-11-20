@@ -1,5 +1,5 @@
 /**
- * GitHub-style callouts (alerts):
+ * GitHub-style callouts (alerts), plus Obsidian's extra kinds and aliases:
  *
  *   > [!NOTE]
  *   > Useful information.
@@ -32,8 +32,41 @@ export type SlashMenuBuilder = Parameters<
   >
 >[0];
 
-export const KINDS = ['note', 'tip', 'important', 'warning', 'caution'] as const;
+/** GitHub's five alerts first, then Obsidian's extra callout kinds. */
+export const KINDS = [
+  'note',
+  'tip',
+  'important',
+  'warning',
+  'caution',
+  'abstract',
+  'info',
+  'todo',
+  'success',
+  'question',
+  'failure',
+  'danger',
+  'bug',
+  'example',
+  'quote',
+] as const;
 export type Kind = (typeof KINDS)[number];
+
+/** Obsidian's alternative names, rendered like their canonical kind. */
+const ALIASES: Record<string, Kind> = {
+  summary: 'abstract',
+  tldr: 'abstract',
+  hint: 'tip',
+  check: 'success',
+  done: 'success',
+  help: 'question',
+  faq: 'question',
+  attention: 'warning',
+  fail: 'failure',
+  missing: 'failure',
+  error: 'danger',
+  cite: 'quote',
+};
 
 const LABELS: Record<Kind, string> = {
   note: 'Note',
@@ -41,6 +74,16 @@ const LABELS: Record<Kind, string> = {
   important: 'Important',
   warning: 'Warning',
   caution: 'Caution',
+  abstract: 'Abstract',
+  info: 'Info',
+  todo: 'Todo',
+  success: 'Success',
+  question: 'Question',
+  failure: 'Failure',
+  danger: 'Danger',
+  bug: 'Bug',
+  example: 'Example',
+  quote: 'Quote',
 };
 
 const ICONS: Record<Kind, string> = {
@@ -49,7 +92,23 @@ const ICONS: Record<Kind, string> = {
   important: '\u2757', // ❗
   warning: '\u26A0\uFE0F', // ⚠️
   caution: '\uD83D\uDED1', // 🛑
+  abstract: '\uD83D\uDCCB', // 📋
+  info: '\u2139\uFE0F', // ℹ️
+  todo: '\u2611\uFE0F', // ☑️
+  success: '\u2705', // ✅
+  question: '\u2753', // ❓
+  failure: '\u274C', // ❌
+  danger: '\u26A1', // ⚡
+  bug: '\uD83D\uDC1B', // 🐛
+  example: '\uD83E\uDDEA', // 🧪
+  quote: '\uD83D\uDCAC', // 💬
 };
+
+function kindOf(name: string): Kind | null {
+  const lower = name.toLowerCase();
+  if ((KINDS as readonly string[]).includes(lower)) return lower as Kind;
+  return ALIASES[lower] ?? null;
+}
 
 const MARKER_RE = /^\[!([a-zA-Z]+)\]/;
 
@@ -77,13 +136,13 @@ function findMarker(blockquote: ProseNode, pos: number): Marker | null {
   if (!match) {
     return null;
   }
-  const kind = match[1].toLowerCase();
-  if (!(KINDS as readonly string[]).includes(kind)) {
+  const kind = kindOf(match[1]);
+  if (!kind) {
     return null;
   }
   // pos is the blockquote start; +1 enters the blockquote, +1 enters the paragraph.
   const from = pos + 2;
-  return { kind: kind as Kind, from, to: from + match[0].length };
+  return { kind, from, to: from + match[0].length };
 }
 
 function allMarkers(doc: ProseNode): Marker[] {
@@ -165,6 +224,11 @@ class KindPicker {
     el.style.left = `${anchor.left}px`;
     el.style.top = `${anchor.bottom + 4}px`;
     document.body.appendChild(el);
+    // Fifteen kinds may not fit below the badge: open upwards when needed.
+    const overflow = anchor.bottom + 4 + el.offsetHeight - window.innerHeight;
+    if (overflow > 0 && anchor.top - 4 - el.offsetHeight >= 0) {
+      el.style.top = `${anchor.top - 4 - el.offsetHeight}px`;
+    }
     this.el = el;
     // Defer so the opening click doesn't immediately dismiss.
     setTimeout(() => {
