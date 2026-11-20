@@ -1339,9 +1339,39 @@ body {
 }
 
 /* Group chip in the toolbar: `⊟ field ▾`. */
-/* Group chip sits with the actions, left of ✎ and ⋯. */
+/* Group chip sits with the actions, right of ✎ and ⋯. */
 .mdw-qt-group-chip {
-  margin-right: 4px;
+  margin-left: 4px;
+}
+
+/* "Group by ›" flyout inside the ⋯ menu, opening to the left of the list. */
+.mdw-qt-submenu {
+  position: relative;
+  display: flex;
+}
+
+.mdw-qt-toolbar .mdw-qt-submenu > button {
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.mdw-qt-submenu-arrow {
+  opacity: 0.7;
+}
+
+.mdw-qt-submenu > .mdw-qt-menu-list {
+  top: -5px;
+  right: 100%;
+  left: auto;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.mdw-qt-submenu:hover > .mdw-qt-menu-list,
+.mdw-qt-submenu.open > .mdw-qt-menu-list {
+  display: flex;
 }
 
 .milkdown .ProseMirror .mdw-qt-chip {
@@ -1380,12 +1410,16 @@ body {
   opacity: 0.7;
 }
 
-/* Ticked "Group by" entry in the ⋯ menu. */
-.mdw-qt-toolbar .mdw-qt-menu-list button.mdw-qt-checked::before {
-  content: '✓';
+/* "Group by" entries reserve room for the tick so labels line up. */
+.mdw-qt-toolbar .mdw-qt-submenu .mdw-qt-menu-list button::before {
+  content: '';
   display: inline-block;
   width: 1.2em;
   margin-left: -0.2em;
+}
+
+.mdw-qt-toolbar .mdw-qt-submenu .mdw-qt-menu-list button.mdw-qt-checked::before {
+  content: '✓';
 }
 
 .milkdown .ProseMirror .mdw-qt-menu-list hr {

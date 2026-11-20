@@ -58,6 +58,8 @@ export interface QueryResult {
   total: number;
   /** Present when the query has `group:`; indexes into `rows`, in display order. */
   groups?: { value: Cell; rows: number[] }[];
+  /** Top-level frontmatter fields the matched files use, for the "Group by" menu. */
+  fields: string[];
 }
 
 const RECONCILE_MS = 3000;
@@ -467,7 +469,15 @@ export function runQuery(
       }),
     };
   });
-  const base = { columns, rows, total: filtered.length, ...(readonly.some(Boolean) ? { readonly } : {}) };
+  const fields = new Set<string>();
+  for (const r of filtered) for (const k of Object.keys(r.fm)) if (!k.startsWith('$')) fields.add(k);
+  const base = {
+    columns,
+    rows,
+    total: filtered.length,
+    fields: [...fields].sort(),
+    ...(readonly.some(Boolean) ? { readonly } : {}),
+  };
   if (!query.group) return base;
 
   // Group the limited rows; a file with an array value lands in every group.
@@ -575,7 +585,7 @@ function runDistinct(query: Query, filtered: FileRecord[], resolver?: Resolver):
     path: '',
     cells: [toCell(b.value), { kind: 'number', value: b.count } as Cell],
   }));
-  return { columns: [field, 'count'], rows, total: list.length };
+  return { columns: [field, 'count'], rows, total: list.length, fields: [] };
 }
 
 function groupKey(v: unknown): string {

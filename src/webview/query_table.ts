@@ -55,6 +55,7 @@ interface Result {
   rows: { path: string; cells: Cell[] }[];
   total: number;
   groups?: { value: Cell; rows: number[] }[];
+  fields?: string[];
 }
 
 interface BlockState {
@@ -306,40 +307,49 @@ function groupChipHtml(field: string | undefined): string {
   </span>`;
 }
 
-/** "Group by <column>" entries for the ⋯ menu; the active field is ticked and removes the grouping. */
-function groupByItems(query: Query | undefined, columns: string[]): string {
-  if (!query || query.distinct) return '';
-  const fields = columns.filter((c) => !c.startsWith('file.') || c === 'file.folder');
-  if (query.group && !fields.includes(query.group)) fields.unshift(query.group);
-  const items = fields
+/**
+ * "Group by ▸" flyout for the ⋯ menu: every frontmatter field the matched
+ * files use plus `file.folder`; the active one is ticked and removes the grouping.
+ */
+function groupBySubmenu(query: Query | undefined, result: Result | undefined): string {
+  if (!query || query.distinct || !result) return '';
+  const fields = new Set<string>(['file.folder', ...(result.fields ?? [])]);
+  for (const c of result.columns) if (!c.startsWith('file.')) fields.add(c);
+  if (query.group) fields.add(query.group);
+  const items = [...fields]
+    .sort((a, b) => a.localeCompare(b))
     .map((c) => {
       const active = query.group === c;
-      return `<button data-act="${active ? 'group-remove' : 'group-set'}" data-field="${escapeAttr(c)}" role="menuitemcheckbox" aria-checked="${active}" class="${active ? 'mdw-qt-checked' : ''}">Group by ${escapeHtml(c)}</button>`;
+      return `<button data-act="${active ? 'group-remove' : 'group-set'}" data-field="${escapeAttr(c)}" role="menuitemcheckbox" aria-checked="${active}" class="${active ? 'mdw-qt-checked' : ''}">${escapeHtml(c)}</button>`;
     })
     .join('');
-  return items ? `<hr>${items}` : '';
+  return `<hr>
+    <span class="mdw-qt-submenu">
+      <button data-act="submenu" role="menuitem" aria-haspopup="menu">Group by<span class="mdw-qt-submenu-arrow" aria-hidden="true">›</span></button>
+      <span class="mdw-qt-menu-list" role="menu">${items}</span>
+    </span>`;
 }
 
-const menuHtml = (filter: string, query?: Query, columns: string[] = []) => `${filter}<span class="mdw-qt-actions">
-  ${groupChipHtml(query?.group)}
+const menuHtml = (filter: string, query?: Query, result?: Result) => `${filter}<span class="mdw-qt-actions">
   <button data-act="edit" class="mdw-qt-edit" title="Edit query" aria-pressed="false">${EDIT_ICON}</button>
   <span class="mdw-qt-menu">
     <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
     <span class="mdw-qt-menu-list" role="menu">
       <button data-act="copy" role="menuitem">Copy as Markdown</button>
       <button data-act="copy-query" role="menuitem">Copy query</button>
-      ${groupByItems(query, columns)}
+      ${groupBySubmenu(query, result)}
     </span>
   </span>
+  ${groupChipHtml(query?.group)}
 </span>`;
 
-function renderShell(id: string, inner: string, withMenu = true, filter = '', query?: Query, columns?: string[]): HTMLElement {
+function renderShell(id: string, inner: string, withMenu = true, filter = '', query?: Query, result?: Result): HTMLElement {
   const el = document.createElement('div');
   el.className = 'mdw-qt';
   el.dataset.qid = id;
   el.innerHTML = inner;
   if (withMenu) {
-    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-toolbar">${menuHtml(filter, query, columns)}</div>`);
+    el.insertAdjacentHTML('afterbegin', `<div class="mdw-qt-toolbar">${menuHtml(filter, query, result)}</div>`);
   }
   return el;
 }
@@ -453,7 +463,7 @@ function render(id: string, state: BlockState): HTMLElement {
     true,
     filter,
     query,
-    result.columns
+    result
   );
 }
 
@@ -1117,7 +1127,7 @@ function onClick(e: MouseEvent): void {
   if (action) {
     e.preventDefault();
     e.stopPropagation();
-    if (action !== 'menu') closeMenus();
+    if (action !== 'menu' && action !== 'submenu') closeMenus();
     if (cellAction(action, target)) return;
     switch (action) {
       case 'menu': {
@@ -1127,6 +1137,9 @@ function onClick(e: MouseEvent): void {
         if (!open) menu.classList.add('open');
         break;
       }
+      case 'submenu':
+        target.closest<HTMLElement>('.mdw-qt-submenu')!.classList.toggle('open');
+        break;
       case 'edit': {
         const block = root.closest<HTMLElement>('.milkdown-code-block');
         const editing = !!block?.querySelector('.codemirror-host.hidden');
