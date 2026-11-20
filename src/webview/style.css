@@ -2043,13 +2043,15 @@ body {
 
 /* ---- Interactive cells -------------------------------------------------- */
 
+/* One line box tall and top-aligned so the box centres on the row's first text line. */
 .mdw-qt-check-host {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   min-width: 28px;
-  height: 24px;
-  margin: -4px 0;
+  height: 1.4em;
+  margin: 0;
+  vertical-align: top;
   border-radius: 4px;
   cursor: pointer;
 }
