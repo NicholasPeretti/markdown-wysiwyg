@@ -69,6 +69,12 @@ interface BlockState {
   collapsed: Set<string>;
   /** Path of a row to highlight on the next render (a file just created). */
   focusPath?: string;
+  /**
+   * Set when `rewriteBlock` replaced this block's text. The entry lingers until
+   * the node view re-renders with the new text; meanwhile refreshes must not
+   * paint its stale result over the new block (they share the same DOM slot).
+   */
+  superseded?: boolean;
   apply: (el: HTMLElement) => void;
 }
 
@@ -112,6 +118,7 @@ export function renderQueryPreview(
   const state: BlockState = blocks.get(id) ?? { text: content, page: 0, search: '', collapsed: new Set(), apply };
   state.apply = apply;
   state.text = content;
+  state.superseded = false;
   blocks.set(id, state);
 
   if (state.result || state.error) {
@@ -143,7 +150,7 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
       pending.delete(message.id as string);
       if (!blockIdFor) return true;
       const state = blocks.get(blockIdFor);
-      if (!state) return true;
+      if (!state || state.superseded) return true;
       state.result = normalizeColumns({
         columns: message.columns as string[],
         readonly: message.readonly as boolean[] | undefined,
@@ -166,7 +173,7 @@ export function handleQueryMessage(message: { type: string; id?: string } & { [k
       pending.delete(message.id as string);
       if (!blockIdFor) return true;
       const state = blocks.get(blockIdFor);
-      if (!state) return true;
+      if (!state || state.superseded) return true;
       state.error = String(message.message);
       state.result = undefined;
       state.apply(render(blockIdFor, state));
@@ -253,7 +260,7 @@ function fetchNewFileContext(text: string): Promise<NewFileContext | undefined> 
 
 function run(id: string): void {
   const state = blocks.get(id);
-  if (!state || !host) return;
+  if (!state || state.superseded || !host) return;
   // Validate locally first for instant feedback.
   const { errors } = parseQuery(state.text);
   if (errors.length) {
@@ -1369,6 +1376,22 @@ function rewriteBlock(root: HTMLElement, oldText: string, newText: string): void
   if (oldText === newText) return;
   const ctx = host?.ctx();
   if (!ctx) return;
+  // Retire the old entry and hand its UI state to the block the new text will become.
+  const oldState = blocks.get(blockId(oldText));
+  if (oldState) {
+    oldState.superseded = true;
+    const newId = blockId(newText);
+    if (!blocks.has(newId)) {
+      blocks.set(newId, {
+        text: newText,
+        page: oldState.page,
+        search: oldState.search,
+        collapsed: new Set(oldState.collapsed),
+        apply: oldState.apply,
+        superseded: true,
+      });
+    }
+  }
   let view: EditorView;
   try {
     view = ctx.get(editorViewCtx);
