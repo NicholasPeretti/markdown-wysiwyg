@@ -38,7 +38,8 @@ export async function createQueryFile(
   docUri: vscode.Uri,
   text: string,
   name: string,
-  frontmatterText: string | null
+  frontmatterText: string | null,
+  seed?: GroupSeed
 ): Promise<string> {
   const { query, errors } = parseQuery(text);
   if (errors.length) throw new Error('The query has errors');
@@ -55,7 +56,7 @@ export async function createQueryFile(
 
   const self = index.selfRecord(docUri, frontmatterText);
   const siblings = siblingRecords(index, query, folder);
-  const fm = buildFrontmatter(query, self, siblings, folder);
+  const fm = buildFrontmatter(query, self, siblings, folder, seed);
   const body = fm ? `---\n${fm}---\n` : '';
   await vscode.workspace.fs.writeFile(uri, Buffer.from(body, 'utf8'));
   return rel;
@@ -76,11 +77,18 @@ function siblingRecords(index: FileIndex, query: ReturnType<typeof parseQuery>['
   return same.length ? same : all;
 }
 
+/** The group a file is created from: its field gets the group's value. */
+export interface GroupSeed {
+  field: string;
+  value: string | number | boolean;
+}
+
 function buildFrontmatter(
   query: ReturnType<typeof parseQuery>['query'],
   self: FileRecord,
   siblings: FileRecord[],
-  folder: string
+  folder: string,
+  seed?: GroupSeed
 ): string {
   const doc = new YAML.Document({});
   const seeds = seedValues(query, self);
@@ -95,6 +103,15 @@ function buildFrontmatter(
   const relations = declared
     ? parseRelations(declared.fm[RELATIONS_KEY], path.posix.dirname(declared.file.path))
     : new Map<string, Relation>();
+
+  if (seed && !seed.field.startsWith('file.') && !seeds.has(seed.field)) {
+    const rel = relations.get(seed.field);
+    const list = rel ? rel.multi : siblings.some((r) => Array.isArray(resolveField(r, seed.field)));
+    const node = doc.createNode(list ? [seed.value] : seed.value);
+    if (YAML.isSeq(node)) node.flow = true;
+    doc.setIn(seed.field.split('.'), node);
+    seeds.set(seed.field, seed.value);
+  }
 
   for (const column of effectiveColumns(query)) {
     if (column.startsWith('file.') || column === 'count') continue;

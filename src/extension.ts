@@ -3,7 +3,7 @@ import * as path from 'path';
 import { FileIndex, runQuery } from './query/host';
 import { createOption, renameMarkdownFile, setFrontmatterField, setFrontmatterValue, type EditKind } from './query/edit';
 import { optionsFor, type Relation } from './query/relations';
-import { createQueryFile, newFileContext } from './query/create';
+import { createQueryFile, newFileContext, type GroupSeed } from './query/create';
 import { complete } from './query/complete';
 import { SearchViewProvider, SEARCH_VIEW_ID, type OpenRequest } from './search_view';
 
@@ -403,7 +403,8 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
           if (!index) break;
           try {
             const fmText = typeof message.frontmatter === 'string' ? message.frontmatter : null;
-            const path = await createQueryFile(index, document.uri, String(message.text), String(message.name), fmText);
+            const seed = isGroupSeed(message.seed) ? message.seed : undefined;
+            const path = await createQueryFile(index, document.uri, String(message.text), String(message.name), fmText, seed);
             webviewPanel.webview.postMessage({ type: 'fileCreated', id: message.id, path });
           } catch (err) {
             const msg = err instanceof Error ? err.message : String(err);
@@ -533,6 +534,12 @@ class MarkdownWysiwygProvider implements vscode.CustomTextEditorProvider {
 </body>
 </html>`;
   }
+}
+
+function isGroupSeed(v: unknown): v is GroupSeed {
+  if (!v || typeof v !== 'object') return false;
+  const { field, value } = v as Record<string, unknown>;
+  return typeof field === 'string' && ['string', 'number', 'boolean'].includes(typeof value);
 }
 
 /** Opens http(s)/mailto links externally; other paths resolve relative to the document. */

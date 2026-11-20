@@ -16,6 +16,7 @@ import {
   fromMatcher,
   parseQuery,
   isComputedField,
+  isEmpty,
   resolveField,
   resolveFieldHits,
   type FileRecord,
@@ -471,14 +472,16 @@ export function runQuery(
 
   // Group the limited rows; a file with an array value lands in every group.
   const field = query.group;
-  const buckets = new Map<string, { value: unknown; rows: number[] }>();
+  const buckets = new Map<string, { value: unknown; rel?: Relation; rows: number[] }>();
   limited.forEach((r, i) => {
     const raw = resolveField(r, field, resolver);
     const values = Array.isArray(raw) ? (raw.length ? raw : [undefined]) : [raw];
+    // A relation value becomes a pill in the group header (with the linked file's title).
+    const rel = source ? relationsFor(source, r.file.path).get(field) : undefined;
     for (const v of values) {
       const k = groupKey(v);
       let b = buckets.get(k);
-      if (!b) buckets.set(k, (b = { value: v, rows: [] }));
+      if (!b) buckets.set(k, (b = { value: v, rel, rows: [] }));
       b.rows.push(i);
     }
   });
@@ -488,7 +491,10 @@ export function runQuery(
       const c = compareValues(a.value, b.value);
       return dir === 'asc' ? c : -c;
     })
-    .map((b) => ({ value: toCell(b.value), rows: b.rows }));
+    .map((b) => ({
+      value: b.rel && source && !isEmpty(b.value) ? relationCell(source, b.rel, b.value) : toCell(b.value),
+      rows: b.rows,
+    }));
   return { ...base, groups };
 }
 

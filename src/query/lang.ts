@@ -221,23 +221,44 @@ export function fieldsOf(expr: Expr): string[] {
 
 /** Rewrites the `sort:` lines of a block to a single `sort: field dir`. */
 export function withSort(text: string, field: string, dir: SortDir): string {
-  const lines = text.split('\n');
-  const sortLine = `sort: ${field} ${dir}`;
+  return withKey(text, 'sort', `${field} ${dir}`);
+}
+
+/**
+ * Puts `field dir` first in the sort list, keeping the other terms, so
+ * grouped tables can reorder their groups without losing the row order.
+ */
+export function withGroupSort(text: string, field: string, dir: SortDir): string {
+  const { query } = parseQuery(text);
+  const rest = query.sort.filter((s) => s.field !== field).map((s) => `${s.field} ${s.dir}`);
+  return withKey(text, 'sort', [`${field} ${dir}`, ...rest]);
+}
+
+/** Sets `group: field`, or removes the group line when `field` is null. */
+export function withGroup(text: string, field: string | null): string {
+  return withKey(text, 'group', field);
+}
+
+/**
+ * Replaces the `key:` lines with one per value (at the first one's position),
+ * appends them when the key is missing, and removes the key when `value` is null.
+ */
+function withKey(text: string, key: string, value: string | string[] | null): string {
+  const re = new RegExp(`^\\s*${key}\\s*:`, 'i');
+  const lines = value === null ? [] : (Array.isArray(value) ? value : [value]).map((v) => `${key}: ${v}`);
   let replaced = false;
   const out: string[] = [];
-  for (const line of lines) {
-    if (/^\s*sort\s*:/i.test(line)) {
-      if (!replaced) {
-        out.push(sortLine);
-        replaced = true;
-      }
+  for (const l of text.split('\n')) {
+    if (re.test(l)) {
+      if (!replaced) out.push(...lines);
+      replaced = true;
       continue;
     }
-    out.push(line);
+    out.push(l);
   }
-  if (!replaced) {
+  if (!replaced && lines.length) {
     while (out.length && out[out.length - 1].trim() === '') out.pop();
-    out.push(sortLine);
+    out.push(...lines);
   }
   return out.join('\n');
 }
@@ -790,7 +811,7 @@ function refLiterals(v: unknown): Exclude<Literal, { kind: 'ref' }>[] {
 }
 
 /** A field is empty when missing, `null`, `""` or an empty list (e.g. a relation with no items). */
-function isEmpty(v: unknown): boolean {
+export function isEmpty(v: unknown): boolean {
   return v === undefined || v === null || v === '' || (Array.isArray(v) && v.length === 0);
 }
 

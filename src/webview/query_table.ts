@@ -25,7 +25,10 @@ import {
   parseQuery,
   usesSelf,
   validateName,
+  withGroup,
+  withGroupSort,
   withSort,
+  type Query,
   type SortDir,
 } from '../query/lang';
 import type { Relation } from '../query/relations';
@@ -275,7 +278,43 @@ function blockId(text: string): string {
 const EDIT_ICON =
   '<svg viewBox="0 0 16 16" width="13" height="13" fill="currentColor" aria-hidden="true"><path d="M11.013 1.427a1.75 1.75 0 0 1 2.474 0l1.086 1.086a1.75 1.75 0 0 1 0 2.474l-8.61 8.61c-.21.21-.47.364-.756.445l-3.251.93a.75.75 0 0 1-.927-.928l.929-3.25c.081-.286.235-.547.445-.758l8.61-8.61Zm.176 4.823L9.75 4.81l-6.286 6.287a.253.253 0 0 0-.064.108l-.558 1.953 1.953-.558a.253.253 0 0 0 .108-.064Zm1.238-3.763a.25.25 0 0 0-.354 0L10.811 3.75l1.439 1.44 1.263-1.263a.25.25 0 0 0 0-.354Z"/></svg>';
 
-const menuHtml = (filter: string) => `${filter}<span class="mdw-qt-actions">
+const CHEVRON_ICON =
+  '<svg class="mdw-qt-chevron" viewBox="0 0 16 16" width="16" height="16" fill="currentColor" aria-hidden="true"><path d="M10.072 8.024L5.715 3.667l.618-.62L11 7.716v.618L6.333 13l-.618-.619 4.357-4.357z"/></svg>';
+const GROUP_ICON =
+  '<svg viewBox="0 0 16 16" width="14" height="14" fill="currentColor" aria-hidden="true"><path d="M2 2.5h12v3H2v-3zm1 1v1h10v-1H3zM2 6.5h12v3H2v-3zm1 1v1h10v-1H3zM2 10.5h12v3H2v-3zm1 1v1h10v-1H3z"/></svg>';
+const CHECK_ICON =
+  '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/><path d="M5 8.2l2 2 4-4.4" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+const UNCHECK_ICON =
+  '<svg viewBox="0 0 16 16" width="16" height="16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="2.5"/></svg>';
+
+/**
+ * The `⊟ field ▾` chip next to the filter. On grouped tables it folds/sorts/removes
+ * the groups; otherwise it offers the columns to group by.
+ */
+function groupChipHtml(query: Query, columns: string[]): string {
+  const field = query.group;
+  const items = field
+    ? `<button data-act="group-expand" role="menuitem">Expand all</button>
+       <button data-act="group-collapse" role="menuitem">Collapse all</button>
+       <hr>
+       <button data-act="group-sort" data-dir="asc" role="menuitem">Sort groups A → Z</button>
+       <button data-act="group-sort" data-dir="desc" role="menuitem">Sort groups Z → A</button>
+       <hr>
+       <button data-act="group-remove" role="menuitem">Remove grouping</button>`
+    : columns
+        .filter((c) => !c.startsWith('file.') || c === 'file.folder')
+        .map((c) => `<button data-act="group-set" data-field="${escapeAttr(c)}" role="menuitem">${escapeHtml(c)}</button>`)
+        .join('');
+  if (!items) return '';
+  return `<span class="mdw-qt-menu mdw-qt-group-chip${field ? ' mdw-qt-grouped' : ''}">
+    <button data-act="menu" class="mdw-qt-chip" title="${field ? 'Grouping options' : 'Group by…'}" aria-haspopup="menu">
+      ${GROUP_ICON}<span>${field ? escapeHtml(field) : 'Group'}</span><span class="mdw-qt-caret" aria-hidden="true">▾</span>
+    </button>
+    <span class="mdw-qt-menu-list" role="menu">${items}</span>
+  </span>`;
+}
+
+const menuHtml = (filter: string) => `<span class="mdw-qt-left">${filter}</span><span class="mdw-qt-actions">
   <button data-act="edit" class="mdw-qt-edit" title="Edit query" aria-pressed="false">${EDIT_ICON}</button>
   <span class="mdw-qt-menu">
     <button data-act="menu" class="mdw-qt-menu-btn" title="More actions" aria-haspopup="menu">⋯</button>
@@ -319,6 +358,9 @@ function render(id: string, state: BlockState): HTMLElement {
     : result.total > result.rows.length
       ? `${result.rows.length} of ${result.total} ${noun}s`
       : `${result.total} ${plural(result.total)}`;
+  const groupNote = visible.groups
+    ? ` · ${visible.groups.length} group${visible.groups.length === 1 ? '' : 's'}`
+    : '';
   const pager =
     pageCount > 1
       ? `<span class="mdw-qt-pager">
@@ -331,7 +373,7 @@ function render(id: string, state: BlockState): HTMLElement {
       ${FILTER_ICON}
       <input type="text" placeholder="Filter rows…" spellcheck="false" value="${escapeAttr(state.search)}" aria-label="Filter rows">
       <button data-act="clear-filter" title="Clear filter">×</button>
-    </label>`;
+    </label>${groupChipHtml(query, result.columns)}`;
 
   const head = result.columns
     .map((c) => {
@@ -356,20 +398,27 @@ function render(id: string, state: BlockState): HTMLElement {
     state.search.trim() ? `No rows match “${escapeHtml(state.search.trim())}”` : 'No files match'
   }</td></tr></tbody>`;
 
+  const canCreate = newFileFolder(query) !== undefined && !state.search.trim();
   let body: string;
   if (visible.groups) {
     body = visible.groups.length
       ? visible.groups
-          .map((g) => {
-            const label = g.value.kind === 'null' ? `No ${query.group}` : cellText(g.value);
+          .map((g, gi) => {
+            const label = groupLabel(g.value, query.group!);
             const folded = state.collapsed.has(label);
-            return `<tbody class="mdw-qt-group${folded ? ' mdw-qt-folded' : ''}">
-              <tr class="mdw-qt-group-head" data-act="group" data-group="${escapeAttr(label)}">
-                <td colspan="${result.columns.length}">
-                  <span class="mdw-qt-chevron" aria-hidden="true"></span>
-                  <span class="mdw-qt-group-label">${g.value.kind === 'null' ? `<span class="mdw-qt-null">${escapeHtml(label)}</span>` : renderCell(g.value)}</span>
+            // Files can only be seeded with a real value, so the null group has no "+ New".
+            const newBtn =
+              canCreate && !folded && groupSeedValue(g.value) !== undefined
+                ? `<button data-act="new-file" data-gi="${gi}" class="mdw-qt-group-new" title="New file in this group">${PLUS_ICON}<span>New</span></button>`
+                : '';
+            return `<tbody class="mdw-qt-group${folded ? ' mdw-qt-folded' : ''}" data-gi="${gi}">
+              <tr class="mdw-qt-group-head" data-act="group" data-group="${escapeAttr(label)}" aria-expanded="${!folded}" title="Click to ${folded ? 'expand' : 'collapse'} · ⌥-click for all">
+                <td colspan="${result.columns.length}"><div class="mdw-qt-band">
+                  ${CHEVRON_ICON}
+                  <span class="mdw-qt-group-label">${renderGroupValue(g.value, query.group!)}</span>
                   <span class="mdw-qt-group-count">${g.rows.length}</span>
-                </td>
+                  ${newBtn}
+                </div></td>
               </tr>
               ${folded ? '' : g.rows.map((i) => renderRow(visible.rows[i])).join('')}
             </tbody>`;
@@ -378,19 +427,19 @@ function render(id: string, state: BlockState): HTMLElement {
       : empty;
   } else {
     body = rows.length ? `<tbody>${rows.map(renderRow).join('')}</tbody>` : empty;
-  }
-  // Notion-style "+ New" row, only where a created file would land somewhere obvious.
-  if (newFileFolder(query) !== undefined && !state.search.trim()) {
-    body += `<tbody class="mdw-qt-new"><tr><td colspan="${result.columns.length}">
-      <button data-act="new-file" class="mdw-qt-new-btn" title="Create a new file matching this query">${PLUS_ICON}<span>New</span></button>
-    </td></tr></tbody>`;
+    // Notion-style "+ New" row, only where a created file would land somewhere obvious.
+    if (canCreate) {
+      body += `<tbody class="mdw-qt-new"><tr><td colspan="${result.columns.length}">
+        <button data-act="new-file" class="mdw-qt-new-btn" title="Create a new file matching this query">${PLUS_ICON}<span>New</span></button>
+      </td></tr></tbody>`;
+    }
   }
 
   return renderShell(
     id,
     `<div class="mdw-qt-scroll"><table><thead><tr>${head}</tr></thead>${body}</table></div>
     <div class="mdw-qt-footer">
-      <span class="mdw-qt-count">${count}</span>
+      <span class="mdw-qt-count">${count}${groupNote}</span>
       ${pager}
     </div>`,
     true,
@@ -463,6 +512,50 @@ function renderCell(cell: Cell): string {
             `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.value)}</span>`
         )
         .join('');
+  }
+}
+
+/** Text key used to remember folded groups and to label the empty group. */
+function groupLabel(value: Cell, field: string): string {
+  return value.kind === 'null' ? `No ${field}` : cellText(value);
+}
+
+/** The primitive a file created from this group should carry, if any. */
+function groupSeedValue(value: Cell): string | number | boolean | undefined {
+  switch (value.kind) {
+    case 'string':
+    case 'url':
+    case 'number':
+    case 'bool':
+    case 'date':
+      return value.value;
+    case 'relation':
+      return value.items[0]?.value;
+    default:
+      return undefined;
+  }
+}
+
+/** Draws a group's value the way its cell would look, with a few header-specific tweaks. */
+function renderGroupValue(value: Cell, field: string): string {
+  switch (value.kind) {
+    case 'null':
+      return `<span class="mdw-qt-group-empty">${escapeHtml(groupLabel(value, field))}</span>`;
+    case 'bool':
+      return `<span class="mdw-qt-group-bool">${value.value ? CHECK_ICON : UNCHECK_ICON}<span>${value.value ? 'Yes' : 'No'}</span></span>`;
+    case 'relation': {
+      const it = value.items[0];
+      if (!it) return `<span class="mdw-qt-group-empty">${escapeHtml(groupLabel(value, field))}</span>`;
+      const pill = it.path
+        ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.value)}</span>`
+        : `<span class="mdw-qt-pill mdw-qt-rel mdw-qt-rel-missing" title="No such option">${escapeHtml(it.value)}</span>`;
+      const title = it.label && it.label !== it.value ? `<span class="mdw-qt-group-title">${escapeHtml(it.label)}</span>` : '';
+      return pill + title;
+    }
+    case 'string':
+      return `<span class="mdw-qt-group-text">${escapeHtml(value.value)}</span>`;
+    default:
+      return renderCell(value);
   }
 }
 
@@ -817,10 +910,26 @@ function beginEdit(
  * Turns the "+ New" row into a name input. Like the explorer, the name is
  * validated as you type and the file is only created on Enter.
  */
-function beginNewFile(root: HTMLElement, state: BlockState): void {
+function beginNewFile(root: HTMLElement, state: BlockState, groupIndex?: number): void {
   const id = root.dataset.qid!;
-  const td = root.querySelector<HTMLElement>('.mdw-qt-new td');
-  if (!td || !state.result) return;
+  if (!state.result) return;
+  let td = root.querySelector<HTMLElement>('.mdw-qt-new td');
+  let seed: { field: string; value: string | number | boolean } | undefined;
+  if (groupIndex !== undefined) {
+    // Grouped tables get an input row at the end of the clicked group.
+    const { query } = parseQuery(state.text);
+    const group = filterRows(state.result, state.search).groups?.[groupIndex];
+    const value = group && groupSeedValue(group.value);
+    const tbody = root.querySelector<HTMLElement>(`tbody.mdw-qt-group[data-gi="${groupIndex}"]`);
+    if (!query.group || value === undefined || !tbody) return;
+    seed = { field: query.group, value };
+    const tr = document.createElement('tr');
+    tr.className = 'mdw-qt-new';
+    tr.innerHTML = `<td colspan="${state.result.columns.length}"></td>`;
+    tbody.appendChild(tr);
+    td = tr.firstElementChild as HTMLElement;
+  }
+  if (!td) return;
   editingBlock = id;
   td.innerHTML = '';
   td.classList.add('mdw-qt-new-editing');
@@ -876,7 +985,7 @@ function beginNewFile(root: HTMLElement, state: BlockState): void {
     if (commit && loaded && context && value && !validateName(value, names)) {
       const reqId = `f${++seq}`;
       pending.set(reqId, id);
-      host?.post({ type: 'createFile', id: reqId, text: state.text, name: value, frontmatter: host.frontmatter() });
+      host?.post({ type: 'createFile', id: reqId, text: state.text, name: value, frontmatter: host.frontmatter(), seed });
       td.classList.remove('mdw-qt-new-editing');
       td.innerHTML = `<span class="mdw-qt-status">Creating ${escapeHtml(value)}.md…</span>`;
     } else {
@@ -905,14 +1014,21 @@ function beginNewFile(root: HTMLElement, state: BlockState): void {
   input.focus();
 }
 
+function allGroupLabels(state: BlockState): string[] {
+  if (!state.result?.groups) return [];
+  const { query } = parseQuery(state.text);
+  return state.result.groups.map((g) => groupLabel(g.value, query.group ?? ''));
+}
+
 /** Shows a creation failure in the "+ New" row until the next render. */
 function showNewFileError(id: string, message: string): void {
   const state = blocks.get(id);
   const root = document.querySelector<HTMLElement>(`.mdw-qt[data-qid="${id}"]`);
   if (!state || !root) return;
   replaceContent(root, render(id, state));
-  const td = root.querySelector<HTMLElement>('.mdw-qt-new td');
-  if (td) td.insertAdjacentHTML('beforeend', `<div class="mdw-qt-new-error">${escapeHtml(message)}</div>`);
+  // Grouped tables have no standing "+ New" row, so the error lands in the footer.
+  const slot = root.querySelector<HTMLElement>('.mdw-qt-new td') ?? root.querySelector<HTMLElement>('.mdw-qt-footer');
+  slot?.insertAdjacentHTML('beforeend', `<div class="mdw-qt-new-error">${escapeHtml(message)}</div>`);
 }
 
 /** Applies `value` optimistically and asks the host to persist it. */
@@ -1015,13 +1131,42 @@ function onClick(e: MouseEvent): void {
       case 'copy-query':
         void navigator.clipboard.writeText(state.text);
         break;
-      case 'new-file':
-        beginNewFile(root, state);
+      case 'new-file': {
+        const gi = target.closest<HTMLElement>('[data-gi]')?.dataset.gi;
+        beginNewFile(root, state, gi === undefined ? undefined : Number(gi));
         break;
+      }
       case 'group': {
         const label = target.closest<HTMLElement>('[data-group]')!.dataset.group!;
-        if (!state.collapsed.delete(label)) state.collapsed.add(label);
+        if (e.altKey) {
+          // ⌥-click folds or unfolds every group, following the clicked one.
+          const labels = allGroupLabels(state);
+          if (state.collapsed.has(label)) state.collapsed.clear();
+          else labels.forEach((l) => state.collapsed.add(l));
+        } else if (!state.collapsed.delete(label)) state.collapsed.add(label);
         replaceContent(root, render(id, state));
+        break;
+      }
+      case 'group-expand':
+        state.collapsed.clear();
+        replaceContent(root, render(id, state));
+        break;
+      case 'group-collapse':
+        allGroupLabels(state).forEach((l) => state.collapsed.add(l));
+        replaceContent(root, render(id, state));
+        break;
+      case 'group-sort': {
+        const { query } = parseQuery(state.text);
+        const dir = target.closest<HTMLElement>('[data-dir]')!.dataset.dir as SortDir;
+        if (query.group) rewriteBlock(root, state.text, withGroupSort(state.text, query.group, dir));
+        break;
+      }
+      case 'group-remove':
+        rewriteBlock(root, state.text, withGroup(state.text, null));
+        break;
+      case 'group-set': {
+        const field = target.closest<HTMLElement>('[data-field]')!.dataset.field!;
+        rewriteBlock(root, state.text, withGroup(state.text, field));
         break;
       }
       case 'prev':
