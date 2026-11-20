@@ -95,10 +95,21 @@ body {
   margin: 0;
 }
 
-/* Align the bullet / number / checkbox with the first text line. */
-.milkdown .milkdown-list-item-block li .label-wrapper,
+/*
+ * Align the bullet / number / checkbox with the first text line: the theme's
+ * paragraphs are `padding: 4px 0; line-height: 1.5`, so the marker box is the
+ * height of one line and offset by the paragraph padding.
+ */
+.milkdown .milkdown-list-item-block li .label-wrapper {
+  height: 1.5em;
+  margin-top: 4px;
+  align-self: flex-start;
+}
+
 .milkdown .milkdown-list-item-block li .label-wrapper .label {
-  height: 28px;
+  height: 1.5em;
+  padding: 0;
+  line-height: 1.5;
 }
 
 /* Blockquotes: softer, more editorial. */
