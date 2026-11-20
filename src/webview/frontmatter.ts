@@ -458,6 +458,16 @@ export function createFrontmatterPanel(
 
     const option = options.find((o) => o.value === current);
     if (option) {
+      select.title = '⌘-click to open';
+      // ⌘-click opens the linked file instead of the dropdown, like pills and links.
+      const openOnMod = (e: MouseEvent) => {
+        if (!(e.metaKey || e.ctrlKey)) return;
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.type === 'mousedown') hooks.openFile?.(option.path);
+      };
+      select.addEventListener('mousedown', openOnMod);
+      select.addEventListener('click', openOnMod);
       const link = document.createElement('button');
       link.className = 'mdw-fm-btn mdw-fm-rel-open';
       link.title = 'Open';
