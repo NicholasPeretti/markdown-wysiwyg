@@ -1200,6 +1200,11 @@ body {
   color: var(--vscode-editor-foreground);
 }
 
+.mdw-qt-sort-rank {
+  font-size: 9px;
+  margin-left: 1px;
+}
+
 .mdw-qt tbody tr:hover {
   background: var(--vscode-list-hoverBackground);
 }

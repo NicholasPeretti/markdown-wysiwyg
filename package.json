@@ -2,7 +2,7 @@
   "name": "markdown-wysiwyg",
   "displayName": "Markdown WYSIWYG",
   "description": "Edit markdown files in a Notion-style WYSIWYG editor, with easy switching back to the regular text editor.",
-  "version": "0.5.2",
+  "version": "0.5.3",
   "publisher": "NicholasPeretti",
   "private": true,
   "engines": {

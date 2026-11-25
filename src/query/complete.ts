@@ -64,7 +64,7 @@ export interface Completions {
 const KEY_DETAIL: { [k: string]: string } = {
   from: 'folder or glob to search',
   where: 'filter expression',
-  sort: 'field asc|desc',
+  sort: 'comma-separated field asc|desc',
   limit: 'max rows',
   columns: 'comma-separated fields',
   page_size: 'rows per page (pager in the header)',
@@ -120,7 +120,8 @@ export function complete(line: string, column: number, ctx: CompletionContext): 
       return { from, items: fields() };
 
     case 'sort': {
-      const parts = rest.trimStart().split(/\s+/);
+      // Complete the last comma-separated term.
+      const parts = rest.slice(rest.lastIndexOf(',') + 1).trimStart().split(/\s+/);
       if (parts.length <= 1) {
         return { from, items: [{ label: 'count', kind: 'field', detail: 'files per value (with distinct)' }, ...fields()] };
       }

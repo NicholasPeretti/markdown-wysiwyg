@@ -124,12 +124,16 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
         break;
       }
       case 'sort': {
-        const sm = /^(\S+)(?:\s+(asc|desc))?$/i.exec(value);
-        if (!sm || !FIELD_RE.test(sm[1])) {
-          errors.push({ line, message: `Expected "sort: <field> [asc|desc]", got "${value}"` });
-          break;
+        // `sort: a desc, b asc`: earlier terms win, later ones break ties.
+        // Repeated `sort:` lines append to the list.
+        for (const term of value.split(',').map((t) => t.trim())) {
+          const sm = /^(\S+)(?:\s+(asc|desc))?$/i.exec(term);
+          if (!sm || !FIELD_RE.test(sm[1])) {
+            errors.push({ line, message: `Expected "sort: <field> [asc|desc], …", got "${term || value}"` });
+            break;
+          }
+          query.sort.push({ field: sm[1], dir: (sm[2]?.toLowerCase() as SortDir) ?? 'asc' });
         }
-        query.sort.push({ field: sm[1], dir: (sm[2]?.toLowerCase() as SortDir) ?? 'asc' });
         break;
       }
       case 'limit':
@@ -219,9 +223,37 @@ export function fieldsOf(expr: Expr): string[] {
   }
 }
 
-/** Rewrites the `sort:` lines of a block to a single `sort: field dir`. */
-export function withSort(text: string, field: string, dir: SortDir): string {
-  return withKey(text, 'sort', `${field} ${dir}`);
+export type SortTerm = Query['sort'][number];
+
+/** Rewrites the `sort:` lines of a block to one comma list; removes them when `terms` is empty. */
+export function withSortTerms(text: string, terms: SortTerm[]): string {
+  return withKey(text, 'sort', terms.length ? terms.map((t) => `${t.field} ${t.dir}`).join(', ') : null);
+}
+
+/**
+ * Sort after a plain click on a column header: that column alone, ascending,
+ * or descending when it already led ascending. A grouped table keeps its
+ * group term first so the groups stay in order.
+ */
+export function clickSort(query: Query, field: string): SortTerm[] {
+  const groupTerm = query.group ? query.sort.find((s) => s.field === query.group) : undefined;
+  const rest = query.sort.filter((s) => s !== groupTerm);
+  const lead = field === query.group ? groupTerm : rest[0];
+  const dir: SortDir = lead?.field === field && lead.dir === 'asc' ? 'desc' : 'asc';
+  if (field === query.group) return [{ field, dir }, ...rest];
+  return groupTerm ? [groupTerm, { field, dir }] : [{ field, dir }];
+}
+
+/**
+ * Sort after a shift+click on a column header: a column not in the sort is
+ * appended descending, a descending one flips to ascending, an ascending one
+ * is removed.
+ */
+export function shiftClickSort(query: Query, field: string): SortTerm[] {
+  const i = query.sort.findIndex((s) => s.field === field);
+  if (i === -1) return [...query.sort, { field, dir: 'desc' }];
+  if (query.sort[i].dir === 'desc') return query.sort.map((s, j) => (j === i ? { field, dir: 'asc' } : s));
+  return query.sort.filter((_, j) => j !== i);
 }
 
 /**
@@ -231,7 +263,7 @@ export function withSort(text: string, field: string, dir: SortDir): string {
 export function withGroupSort(text: string, field: string, dir: SortDir): string {
   const { query } = parseQuery(text);
   const rest = query.sort.filter((s) => s.field !== field).map((s) => `${s.field} ${s.dir}`);
-  return withKey(text, 'sort', [`${field} ${dir}`, ...rest]);
+  return withKey(text, 'sort', [`${field} ${dir}`, ...rest].join(', '));
 }
 
 /** Sets `group: field`, or removes the group line when `field` is null. */

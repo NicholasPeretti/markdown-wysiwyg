@@ -38,7 +38,9 @@ import {
   validateName,
   withGroup,
   withGroupSort,
-  withSort,
+  withSortTerms,
+  clickSort,
+  shiftClickSort,
   type Query,
   type SortDir,
 } from "../query/lang";
@@ -482,8 +484,6 @@ function render(id: string, state: BlockState): HTMLElement {
   const page = Math.min(state.page, pageCount - 1);
   const start = page * pageSize;
   const rows = visible.rows.slice(start, start + pageSize);
-  const sort = query.sort[0];
-
   const noun = query.distinct ? "value" : "file";
   const plural = (n: number) => `${noun}${n === 1 ? "" : "s"}`;
   const count = state.search.trim()
@@ -510,9 +510,15 @@ function render(id: string, state: BlockState): HTMLElement {
 
   const head = result.columns
     .map((c) => {
-      const active = sort?.field === c;
-      const arrow = active ? (sort.dir === "asc" ? " ▲" : " ▼") : "";
-      return `<th data-act="sort" data-field="${escapeAttr(c)}" class="${active ? "mdw-qt-sorted" : ""}" title="Sort by ${escapeAttr(c)}">${escapeHtml(c)}${arrow}</th>`;
+      const i = query.sort.findIndex((s) => s.field === c);
+      const term = query.sort[i];
+      // Several sort terms: number each arrow by its priority.
+      const rank =
+        term && query.sort.length > 1
+          ? `<sup class="mdw-qt-sort-rank">${i + 1}</sup>`
+          : "";
+      const arrow = term ? (term.dir === "asc" ? " ▲" : " ▼") + rank : "";
+      return `<th data-act="sort" data-field="${escapeAttr(c)}" class="${term ? "mdw-qt-sorted" : ""}" title="Sort by ${escapeAttr(c)} (⇧-click to add to the sort)">${escapeHtml(c)}${arrow}</th>`;
     })
     .join("");
 
@@ -1482,10 +1488,10 @@ function onClick(e: MouseEvent): void {
         const field =
           target.closest<HTMLElement>("[data-field]")!.dataset.field!;
         const { query } = parseQuery(state.text);
-        const current = query.sort[0];
-        const dir: SortDir =
-          current?.field === field && current.dir === "asc" ? "desc" : "asc";
-        rewriteBlock(root, state.text, withSort(state.text, field, dir));
+        const terms = e.shiftKey
+          ? shiftClickSort(query, field)
+          : clickSort(query, field);
+        rewriteBlock(root, state.text, withSortTerms(state.text, terms));
         break;
       }
     }
