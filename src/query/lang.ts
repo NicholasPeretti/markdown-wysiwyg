@@ -19,6 +19,17 @@ export interface Query {
   group?: string;
   /** List the distinct values of this field with a file count instead of files. */
   distinct?: string;
+  /** Which groups start open (`expand`); groups no term matches start folded. */
+  expand?: ExpandTerm[];
+}
+
+/**
+ * One `expand` term: `*` (every group), `null` (the empty group) or a stored
+ * value; `-` in front folds instead of opening.
+ */
+export interface ExpandTerm {
+  open: boolean;
+  match: { kind: 'all' } | { kind: 'null' } | { kind: 'value'; value: string };
 }
 
 export interface QueryError {
@@ -56,7 +67,7 @@ export type Literal =
   /** `$.field`: the value of the current file's own frontmatter field. */
   | { kind: 'ref'; field: string };
 
-export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page_size', 'group', 'distinct'] as const;
+export const QUERY_KEYS = ['from', 'where', 'sort', 'limit', 'columns', 'page_size', 'group', 'distinct', 'expand'] as const;
 export const OPERATORS: CmpOp[] = [
   '==',
   '!=',
@@ -165,6 +176,16 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
         query[key] = value;
         break;
       }
+      case 'expand': {
+        if (!value) {
+          query.expand = undefined;
+          break;
+        }
+        const terms = parseExpand(value);
+        if (typeof terms === 'string') errors.push({ line, message: terms });
+        else query.expand = terms;
+        break;
+      }
       case 'columns': {
         const cols = value
           .split(',')
@@ -189,6 +210,9 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
   if (query.group && query.distinct) {
     errors.push({ line: 0, message: '"group" and "distinct" cannot be combined' });
   }
+  if (query.expand && !query.group) {
+    errors.push({ line: 0, message: '"expand" needs "group"' });
+  }
   // Paging exists to browse everything without a tall table, so a page size
   // lifts the default cap unless the author limited the query explicitly.
   if (query.page && !explicitLimit) query.limit = Infinity;
@@ -196,6 +220,66 @@ export function parseQuery(text: string): { query: Query; errors: QueryError[] }
     query.sort.push(query.distinct ? { field: 'count', dir: 'desc' } : { field: 'file.modified', dir: 'desc' });
   }
   return { query, errors };
+}
+
+/**
+ * Parses `expand: *, -"hello world", null`: comma-separated terms, each an
+ * optional `-`, then `*`, `null`, a quoted literal (`\\"` escapes a quote) or
+ * bare text. Returns the problem as a string when the list is malformed.
+ */
+export function parseExpand(src: string): ExpandTerm[] | string {
+  const terms: ExpandTerm[] = [];
+  const n = src.length;
+  let i = 0;
+  const skipSpace = () => {
+    while (i < n && /\s/.test(src[i])) i++;
+  };
+  for (;;) {
+    skipSpace();
+    let open = true;
+    if (src[i] === '-') {
+      open = false;
+      i++;
+      skipSpace();
+    }
+    let match: ExpandTerm['match'];
+    if (src[i] === '"') {
+      let v = '';
+      i++;
+      while (i < n && src[i] !== '"') {
+        if (src[i] === '\\' && i + 1 < n) i++;
+        v += src[i++];
+      }
+      if (i >= n) return `Unterminated quote in "expand: ${src}"`;
+      i++;
+      match = { kind: 'value', value: v };
+    } else {
+      const comma = src.indexOf(',', i);
+      const end = comma === -1 ? n : comma;
+      const raw = src.slice(i, end).trim();
+      i = end;
+      if (!raw) return `Expected a group value in "expand: ${src}"`;
+      match = raw === '*' ? { kind: 'all' } : raw === 'null' ? { kind: 'null' } : { kind: 'value', value: raw };
+    }
+    terms.push({ open, match });
+    skipSpace();
+    if (i >= n) return terms;
+    if (src[i] !== ',') return `Expected "," between group values in "expand: ${src}"`;
+    i++;
+  }
+}
+
+/**
+ * Whether a group starts open. `value` is the group's stored value as text,
+ * `null` for the empty group. Terms apply left to right; the last match wins.
+ */
+export function groupStartsOpen(terms: ExpandTerm[] | undefined, value: string | null): boolean {
+  let open = false;
+  for (const t of terms ?? []) {
+    const m = t.match;
+    if (m.kind === 'all' || (m.kind === 'null' ? value === null : m.value === value)) open = t.open;
+  }
+  return open;
 }
 
 /** Fields the result needs as columns when `columns` is omitted. */

@@ -70,6 +70,7 @@ const KEY_DETAIL: { [k: string]: string } = {
   page_size: 'rows per page (pager in the header)',
   group: 'field to group rows by',
   distinct: 'field whose unique values to list',
+  expand: 'groups that start open: *, value, -value',
 };
 
 const FILE_FIELD_DETAIL: { [k: string]: string } = {

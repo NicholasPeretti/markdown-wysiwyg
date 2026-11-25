@@ -71,7 +71,7 @@ interface Result {
   readonly?: boolean[];
   rows: { path: string; cells: Cell[] }[];
   total: number;
-  groups?: { value: Cell; rows: number[] }[];
+  groups?: { value: Cell; rows: number[]; open?: boolean }[];
   fields?: string[];
 }
 
@@ -550,9 +550,9 @@ function render(id: string, state: BlockState): HTMLElement {
   if (visible.groups) {
     if (!state.foldInit) {
       state.foldInit = true;
-      visible.groups.forEach((g) =>
-        state.collapsed.add(groupLabel(g.value, query.group!)),
-      );
+      visible.groups.forEach((g) => {
+        if (!g.open) state.collapsed.add(groupLabel(g.value, query.group!));
+      });
     }
     body = visible.groups.length
       ? visible.groups
@@ -637,6 +637,7 @@ function filterRows(
   const groups = result.groups
     ?.map((g) => ({
       value: g.value,
+      open: g.open,
       rows: g.rows.filter((i) => index.has(i)).map((i) => index.get(i)!),
     }))
     .filter((g) => g.rows.length);

@@ -14,6 +14,7 @@ import {
   effectiveColumns,
   evaluate,
   fromMatcher,
+  groupStartsOpen,
   parseQuery,
   isComputedField,
   isEmpty,
@@ -56,8 +57,11 @@ export interface QueryResult {
   /** `path` is empty for `distinct` rows, which do not stand for a file. */
   rows: { path: string; cells: Cell[] }[];
   total: number;
-  /** Present when the query has `group:`; indexes into `rows`, in display order. */
-  groups?: { value: Cell; rows: number[] }[];
+  /**
+   * Present when the query has `group:`; indexes into `rows`, in display
+   * order. `open` says whether the group starts unfolded (`expand:`).
+   */
+  groups?: { value: Cell; rows: number[]; open: boolean }[];
   /** Top-level frontmatter fields the matched files use, for the "Group by" menu. */
   fields: string[];
 }
@@ -504,6 +508,7 @@ export function runQuery(
     .map((b) => ({
       value: b.rel && source && !isEmpty(b.value) ? relationCell(source, b.rel, b.value) : toCell(b.value),
       rows: b.rows,
+      open: groupStartsOpen(query.expand, storedText(b.value)),
     }));
   return { ...base, groups };
 }
@@ -586,6 +591,17 @@ function runDistinct(query: Query, filtered: FileRecord[], resolver?: Resolver):
     cells: [toCell(b.value), { kind: 'number', value: b.count } as Cell],
   }));
   return { columns: [field, 'count'], rows, total: list.length, fields: [] };
+}
+
+/** A group's stored value as `expand:` terms spell it; `null` for the empty group. */
+function storedText(v: unknown): string | null {
+  if (v === undefined || v === null) return null;
+  if (v instanceof Date) {
+    const iso = v.toISOString();
+    return iso.endsWith('T00:00:00.000Z') ? iso.slice(0, 10) : iso;
+  }
+  if (typeof v === 'object') return JSON.stringify(v);
+  return String(v);
 }
 
 function groupKey(v: unknown): string {
