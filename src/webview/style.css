@@ -2217,6 +2217,37 @@ body {
   opacity: 0.6;
   border-style: dashed;
 }
+
+/* `$colour` on a linked file tints every pill pointing to it. The hue is mixed
+   into the theme's foreground so the text stays readable in light and dark. */
+[data-colour="gray"] { --mdw-hue: #9b9a97; }
+[data-colour="yellow"] { --mdw-hue: #d9a800; }
+[data-colour="orange"] { --mdw-hue: #e8781a; }
+[data-colour="blue"] { --mdw-hue: #3a8ee6; }
+[data-colour="green"] { --mdw-hue: #2fa86b; }
+[data-colour="purple"] { --mdw-hue: #9065e0; }
+[data-colour="pink"] { --mdw-hue: #db5c9e; }
+[data-colour="red"] { --mdw-hue: #e5534b; }
+.mdw-qt-pill[data-colour],
+.mdw-qt-sel-text[data-colour],
+.mdw-fm-pill[data-colour],
+.mdw-rel-pill[data-colour],
+.mdw-rel-label[data-colour],
+.mdw-fm-select[data-colour] {
+  background: color-mix(in srgb, var(--mdw-hue) 22%, transparent);
+  color: color-mix(in srgb, var(--mdw-hue) 55%, var(--vscode-editor-foreground));
+}
+.mdw-rel-label[data-colour] {
+  padding: 0 6px;
+  border-radius: 4px;
+}
+.mdw-fm-select[data-colour] {
+  flex: 0 1 auto;
+  height: 22px;
+  line-height: 22px;
+  padding: 0 6px;
+  border-radius: 11px;
+}
 .mdw-fm-schema {
   cursor: default;
   margin-left: 22px;
@@ -2317,6 +2348,16 @@ body {
   color: var(--vscode-button-foreground) !important;
 }
 
+.mdw-fm-colour {
+  cursor: pointer;
+}
+.mdw-fm-colour .mdw-fm-pill {
+  cursor: pointer;
+}
+.mdw-fm-colour-empty {
+  opacity: 0.5;
+  font-size: 12px;
+}
 .mdw-fm-select-host {
   display: flex;
   align-items: center;

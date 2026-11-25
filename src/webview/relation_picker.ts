@@ -11,6 +11,8 @@ export interface PickerOption {
   value: string;
   label: string;
   path: string;
+  /** The linked file's `$colour`. */
+  colour?: string;
 }
 
 export interface PickerConfig {
@@ -79,6 +81,10 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
   };
 
   const labelOf = (v: string) => cfg.options.find((o) => o.value === v)?.label ?? v;
+  const colourOf = (v: string) => {
+    const c = cfg.options.find((o) => o.value === v)?.colour;
+    return c ? ` data-colour="${escapeAttr(c)}"` : '';
+  };
 
   type Row = { kind: 'option'; option: PickerOption } | { kind: 'create'; name: string };
   let rows: Row[] = [];
@@ -88,7 +94,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
       selectedEl.innerHTML = values
         .map(
           (v) =>
-            `<span class="mdw-rel-pill" data-value="${escapeAttr(v)}">${escapeHtml(labelOf(v))}<button class="mdw-rel-pill-x" tabindex="-1" aria-label="Remove">✕</button></span>`
+            `<span class="mdw-rel-pill" data-value="${escapeAttr(v)}"${colourOf(v)}>${escapeHtml(labelOf(v))}<button class="mdw-rel-pill-x" tabindex="-1" aria-label="Remove">✕</button></span>`
         )
         .join('');
     }
@@ -112,7 +118,7 @@ export function openRelationPicker(cfg: PickerConfig): Picker {
             const on = values.includes(row.option.value);
             return `<div class="mdw-rel-item${hl}${on ? ' mdw-rel-on' : ''}" data-i="${i}" role="option" aria-selected="${on}">
               <span class="mdw-rel-check" aria-hidden="true">${on ? '✓' : ''}</span>
-              <span class="mdw-rel-label">${escapeHtml(row.option.label)}</span>
+              <span class="mdw-rel-label"${colourOf(row.option.value)}>${escapeHtml(row.option.label)}</span>
               ${row.option.label !== row.option.value ? `<span class="mdw-rel-value">${escapeHtml(row.option.value)}</span>` : ''}
             </div>`;
           })

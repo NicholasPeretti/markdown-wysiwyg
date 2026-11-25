@@ -34,7 +34,16 @@ export interface RelationOption {
   value: string;
   label: string;
   path: string;
+  /** The linked file's `$colour`, which tints its pills. */
+  colour?: Colour;
 }
+
+/** Values `$colour` accepts; anything else leaves the pill untinted. */
+export const COLOURS = ['gray', 'yellow', 'orange', 'blue', 'green', 'purple', 'pink', 'red'] as const;
+export type Colour = (typeof COLOURS)[number];
+
+/** Reserved frontmatter key a linked file sets to tint the pills pointing to it. */
+export const COLOUR_KEY = '$colour';
 
 export interface RelationSource {
   record(relPath: string): FileRecord | undefined;
@@ -107,7 +116,7 @@ export function optionsFor(source: RelationSource, rel: Relation): RelationOptio
     if (INDEX_NAMES.includes(p.slice(prefix.length))) continue;
     const value = optionValue(rec, rel);
     if (value === undefined) continue;
-    out.push({ value, label: optionLabel(rec, value), path: p });
+    out.push(option(rec, value));
   }
   return out.sort((a, b) => a.label.localeCompare(b.label, undefined, { sensitivity: 'base' }));
 }
@@ -118,6 +127,14 @@ function optionValue(rec: FileRecord, rel: Relation): string | undefined {
   if (v === null || v === undefined || typeof v === 'object') return undefined;
   const s = String(v).trim();
   return s || undefined;
+}
+
+function option(rec: FileRecord, value: string): RelationOption {
+  const raw = rec.fm[COLOUR_KEY];
+  const colour = typeof raw === 'string' ? raw.trim().toLowerCase() : undefined;
+  const opt: RelationOption = { value, label: optionLabel(rec, value), path: rec.file.path };
+  if (colour && (COLOURS as readonly string[]).includes(colour)) opt.colour = colour as Colour;
+  return opt;
 }
 
 function optionLabel(rec: FileRecord, value: string): string {
@@ -131,7 +148,7 @@ export function resolveOption(source: RelationSource, rel: Relation, value: stri
     const base = rel.folder ? `${rel.folder}/` : '';
     for (const ext of ['.md', '.markdown']) {
       const rec = source.record(`${base}${value}${ext}`);
-      if (rec) return { value, label: optionLabel(rec, value), path: rec.file.path };
+      if (rec) return option(rec, value);
     }
   }
   return optionsFor(source, rel).find((o) => o.value === value);

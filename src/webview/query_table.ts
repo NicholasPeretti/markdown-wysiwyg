@@ -60,7 +60,7 @@ export type Cell =
   | { kind: "object"; value: string }
   | {
       kind: "relation";
-      items: { value: string; label?: string; path?: string }[];
+      items: { value: string; label?: string; path?: string; colour?: string }[];
       relation: Relation;
     }
   | { kind: "links"; items: { value: string; path: string }[] };
@@ -673,7 +673,7 @@ function renderCell(cell: Cell): string {
       return cell.items
         .map((it) =>
           it.path
-            ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.label ?? it.value)}</span>`
+            ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}"${colourAttr(it.colour)} title="⌘-click to open">${escapeHtml(it.label ?? it.value)}</span>`
             : `<span class="mdw-qt-pill mdw-qt-rel mdw-qt-rel-missing" title="No such option">${escapeHtml(it.value)}</span>`,
         )
         .join("");
@@ -720,7 +720,7 @@ function renderGroupValue(value: Cell, field: string): string {
       if (!it)
         return `<span class="mdw-qt-group-empty">${escapeHtml(groupLabel(value, field))}</span>`;
       const pill = it.path
-        ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}" title="⌘-click to open">${escapeHtml(it.value)}</span>`
+        ? `<span class="mdw-qt-pill mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}"${colourAttr(it.colour)} title="⌘-click to open">${escapeHtml(it.value)}</span>`
         : `<span class="mdw-qt-pill mdw-qt-rel mdw-qt-rel-missing" title="No such option">${escapeHtml(it.value)}</span>`;
       const title =
         it.label && it.label !== it.value
@@ -788,7 +788,7 @@ function renderEditableCell(cell: Cell, mode: EditMode): string {
       if (!cell.relation.multi) {
         const it = cell.items[0];
         const inner = it
-          ? `<span class="mdw-qt-sel-text${it.path ? "" : " mdw-qt-rel-missing"}"${it.path ? ` data-rel-path="${escapeAttr(it.path)}"` : ""}>${escapeHtml(it.label ?? it.value)}</span>`
+          ? `<span class="mdw-qt-sel-text${it.path ? "" : " mdw-qt-rel-missing"}"${it.path ? ` data-rel-path="${escapeAttr(it.path)}"` : ""}${colourAttr(it.colour)}>${escapeHtml(it.label ?? it.value)}</span>`
           : '<span class="mdw-qt-null">—</span>';
         return `<span class="mdw-qt-select" data-act="rel-pick" title="Click to change">${inner}<span class="mdw-qt-sel-chevron" aria-hidden="true">▾</span></span>`;
       }
@@ -801,6 +801,7 @@ function renderEditableCell(cell: Cell, mode: EditMode): string {
             it.path
               ? `mdw-qt-rel" data-rel-path="${escapeAttr(it.path)}`
               : "mdw-qt-rel mdw-qt-rel-missing",
+            colourAttr(it.colour),
           ),
         )
         .join("")}${addButton("rel-pick")}</span>`;
@@ -815,8 +816,14 @@ function removablePill(
   act: string,
   index: number,
   extraClass = "",
+  attrs = "",
 ): string {
-  return `<span class="mdw-qt-pill mdw-qt-pill-rm ${extraClass}"><span>${html}</span><button class="mdw-qt-pill-x" data-act="${act}" data-idx="${index}" title="Remove" aria-label="Remove">✕</button></span>`;
+  return `<span class="mdw-qt-pill mdw-qt-pill-rm ${extraClass}"${attrs}><span>${html}</span><button class="mdw-qt-pill-x" data-act="${act}" data-idx="${index}" title="Remove" aria-label="Remove">✕</button></span>`;
+}
+
+/** ` data-colour="…"` for a relation item's `$colour`, which the stylesheet turns into a tint. */
+function colourAttr(colour: string | undefined): string {
+  return colour ? ` data-colour="${escapeAttr(colour)}"` : "";
 }
 
 function addButton(act: string): string {

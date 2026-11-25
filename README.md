@@ -54,7 +54,7 @@ columns: file.name, title, status, file.modified
 | `limit` | Max rows (default 50; no cap when `page_size` is set). |
 | `page_size` | Rows per page; shows a ‹ › pager in the table header so every matching file is reachable without a tall table. Alias: `page`. |
 | `columns` | Columns to show. Default: `file.name, file.path, file.modified` plus any fields used in `where`/`sort`. |
-| `group` | Group rows under a folding band per value of this field (a file with an array value, e.g. `tags`, appears in each of its groups). Groups start folded unless `expand` opens them; click a band to open it (⌥-click for all), rows sit indented under the label. Groups follow the `sort` direction of that field, if any, and rows within a group follow the other `sort` terms (e.g. `group: active` with `sort: active desc, file.modified desc`); `page_size` is ignored. |
+| `group` | Group rows under a folding band per value of this field (a file with an array value, e.g. `tags`, appears in each of its groups). Groups start folded unless `expand` opens them; click a band to open it (⌥-click for all), rows sit indented under the label. Groups follow the first `sort` term on that field or on a path through it (`group: status` with `sort: status.order asc` orders the groups by each status file's `order`), and rows within a group follow the other `sort` terms (e.g. `group: active` with `sort: active desc, file.modified desc`); `page_size` is ignored. |
 | `distinct` | List the unique values of this field with a file count instead of files (columns `<field>`, `count`). Default sort: `count desc`; `limit` caps the number of values. Cannot be combined with `group`. |
 | `expand` | Which groups start open; the rest start folded. Comma-separated terms applied left to right, the last match winning: a group's stored value (`261118-foo`, `true`, `2026-11-25`), `null` for the empty group, `*` for every group, each with `-` in front to fold instead. Quote values with commas, spaces or a leading `-`; a quoted `"*"` or `"null"` is a literal value. E.g. `expand: *, -"hello world"` opens every group but one. Needs `group`; folding by click is not written back. |
 
@@ -119,6 +119,8 @@ Declared fields appear in the properties panel even when the file doesn't have t
 
 - **Properties panel** — `multi` fields are chips: type to filter, Enter adds, `Create "x"` writes `from/x.md` (with `field: x` in its frontmatter). Single fields are a dropdown of the existing options. Cmd/Ctrl+click a chip (or the ↗ next to a dropdown) opens the option file.
 - **Query tables** — `multi` relations are pills with a `+` that opens the picker; single ones are a dropdown. Changes write the target file's frontmatter. Cmd/Ctrl+click a pill opens the option file. Values with no matching option show as dashed pills.
+
+An option file can set `$colour` to one of `gray`, `yellow`, `orange`, `blue`, `green`, `purple`, `pink` or `red` to tint every pill pointing to it: in query cells and group bands, the properties panel and the picker. Other values are ignored. In the properties panel, a `$colour` field opens a picker showing each colour.
 
 Since relations are plain frontmatter, put them in your templates so every new file gets them. The option file can list its users with a `$.field` query, e.g. `where: tags includes $.name` in `tags/urgent.md`.
 

@@ -315,12 +315,24 @@ export function withSortTerms(text: string, terms: SortTerm[]): string {
 }
 
 /**
+ * The sort term that orders a grouped table's groups: the first on the group
+ * field itself or, when that field is a plain one, on a path through it
+ * (`status.order` for `group: status`).
+ */
+export function groupSortTerm(query: Query): SortTerm | undefined {
+  const g = query.group;
+  if (!g) return undefined;
+  const plain = /^[A-Za-z_][\w-]*$/.test(g);
+  return query.sort.find((s) => s.field === g || (plain && s.field.startsWith(`${g}.`)));
+}
+
+/**
  * Sort after a plain click on a column header: that column alone, ascending,
  * or descending when it already led ascending. A grouped table keeps its
  * group term first so the groups stay in order.
  */
 export function clickSort(query: Query, field: string): SortTerm[] {
-  const groupTerm = query.group ? query.sort.find((s) => s.field === query.group) : undefined;
+  const groupTerm = groupSortTerm(query);
   const rest = query.sort.filter((s) => s !== groupTerm);
   const lead = field === query.group ? groupTerm : rest[0];
   const dir: SortDir = lead?.field === field && lead.dir === 'asc' ? 'desc' : 'asc';

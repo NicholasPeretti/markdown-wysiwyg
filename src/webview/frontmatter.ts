@@ -8,7 +8,7 @@
  */
 import YAML from 'yaml';
 import { isUrl } from './links';
-import { RELATIONS_KEY, parseRelations, type Relation } from '../query/relations';
+import { COLOURS, COLOUR_KEY, RELATIONS_KEY, parseRelations, type Relation } from '../query/relations';
 import { openRelationPicker, type PickerOption } from './relation_picker';
 import { onRelationOptionsChanged, peekOptions } from './relation_options';
 
@@ -258,6 +258,10 @@ export function createFrontmatterPanel(
       return relation.multi ? renderRelationChips(value, relation, setRelValue) : renderRelationSelect(value, relation, setRelValue);
     }
 
+    if (index >= 0 && current[index][0] === COLOUR_KEY && (value === null || typeof value === 'string')) {
+      return renderColour(value ?? '', setValue);
+    }
+
     if (typeof value === 'boolean') {
       const host = document.createElement('label');
       host.className = 'mdw-fm-value mdw-fm-check-host';
@@ -450,6 +454,8 @@ export function createFrontmatterPanel(
       select.appendChild(opt);
     }
     select.value = current ?? '';
+    const colour = options.find((o) => o.value === current)?.colour;
+    if (colour) select.dataset.colour = colour;
     select.addEventListener('change', () => {
       setValue(select.value === '' ? null : select.value);
       render();
@@ -478,9 +484,60 @@ export function createFrontmatterPanel(
     return host;
   };
 
+  /** `$colour`: the current colour as a tinted pill; clicking opens a picker of the palette. */
+  const renderColour = (value: string, setValue: (next: unknown) => void): HTMLElement => {
+    const host = pillHost();
+    host.classList.add('mdw-fm-colour');
+    host.tabIndex = 0;
+    if (value !== '') {
+      const el = pill(value, '', () => {
+        setValue(null);
+        render();
+      });
+      if ((COLOURS as readonly string[]).includes(value.toLowerCase())) el.dataset.colour = value.toLowerCase();
+      else el.classList.add('mdw-fm-rel-missing');
+      host.appendChild(el);
+    } else {
+      const empty = document.createElement('span');
+      empty.className = 'mdw-fm-colour-empty';
+      empty.textContent = 'Pick a colour…';
+      host.appendChild(empty);
+    }
+    let closedAt = 0;
+    const open = () => {
+      // A click on the field while the picker is open closes it (on mousedown); don't reopen.
+      if (editingField !== undefined || performance.now() - closedAt < 300) return;
+      editingField = COLOUR_KEY;
+      openRelationPicker({
+        anchor: host,
+        options: COLOURS.map((c) => ({ value: c, label: c, path: '', colour: c })),
+        selected: value === '' ? [] : [value.toLowerCase()],
+        multi: false,
+        onClose: (next, _created, changed) => {
+          editingField = undefined;
+          closedAt = performance.now();
+          if (!changed) return;
+          setValue(next[0] ?? null);
+          render();
+        },
+      });
+    };
+    host.addEventListener('click', (e) => {
+      if (!(e.target as HTMLElement).closest('.mdw-fm-pill-x')) open();
+    });
+    host.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        open();
+      }
+    });
+    return host;
+  };
+
   const relationPill = (v: string, option: PickerOption | undefined, onRemove: () => void): HTMLElement => {
     const el = pill(option?.label ?? v, '', onRemove);
     el.classList.add('mdw-fm-rel');
+    if (option?.colour) el.dataset.colour = option.colour;
     if (!option) el.classList.add('mdw-fm-rel-missing');
     el.title = option ? '⌘-click to open' : 'No such option';
     (el.firstElementChild as HTMLElement).addEventListener('click', (e: MouseEvent) => {

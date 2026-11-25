@@ -14,6 +14,7 @@ import {
   effectiveColumns,
   evaluate,
   fromMatcher,
+  groupSortTerm,
   groupStartsOpen,
   parseQuery,
   isComputedField,
@@ -46,7 +47,7 @@ export type Cell =
   | { kind: 'date'; value: string }
   | { kind: 'array'; value: string[] }
   | { kind: 'object'; value: string }
-  | { kind: 'relation'; items: { value: string; label?: string; path?: string }[]; relation: Relation }
+  | { kind: 'relation'; items: { value: string; label?: string; path?: string; colour?: string }[]; relation: Relation }
   /** Values read through a relation (`tasks.title`); each links to the file it came from. */
   | { kind: 'links'; items: { value: string; path: string }[] };
 
@@ -486,7 +487,7 @@ export function runQuery(
 
   // Group the limited rows; a file with an array value lands in every group.
   const field = query.group;
-  const buckets = new Map<string, { value: unknown; rel?: Relation; rows: number[] }>();
+  const buckets = new Map<string, { value: unknown; rel?: Relation; rows: number[]; first: FileRecord }>();
   limited.forEach((r, i) => {
     const raw = resolveField(r, field, resolver);
     const values = Array.isArray(raw) ? (raw.length ? raw : [undefined]) : [raw];
@@ -495,14 +496,21 @@ export function runQuery(
     for (const v of values) {
       const k = groupKey(v);
       let b = buckets.get(k);
-      if (!b) buckets.set(k, (b = { value: v, rel, rows: [] }));
+      if (!b) buckets.set(k, (b = { value: v, rel, rows: [], first: r }));
       b.rows.push(i);
     }
   });
-  const dir = query.sort.find((s) => s.field === field)?.dir ?? 'asc';
+  const term = groupSortTerm(query);
+  const dir = term?.dir ?? 'asc';
+  // `sort: status.order` orders `group: status` by each group's linked file:
+  // read the path from a copy of a row holding just that group's value.
+  const through = term && term.field !== field ? term.field : undefined;
+  const sortKey = (b: { value: unknown; first: FileRecord }) =>
+    through ? resolveField({ file: b.first.file, fm: { ...b.first.fm, [field]: b.value } }, through, resolver) : b.value;
   const groups = [...buckets.values()]
+    .map((b) => ({ ...b, key: sortKey(b) }))
     .sort((a, b) => {
-      const c = compareValues(a.value, b.value);
+      const c = compareValues(a.key, b.key) || compareValues(a.value, b.value);
       return dir === 'asc' ? c : -c;
     })
     .map((b) => ({
@@ -621,7 +629,12 @@ function relationCell(source: RelationSource, rel: Relation, v: unknown): Cell {
       .filter((x) => x !== null && x !== undefined && typeof x !== 'object')
       .map((x) => {
         const opt = resolveOption(source, rel, String(x));
-        return { value: String(x), path: opt?.path, ...(opt && opt.label !== String(x) ? { label: opt.label } : {}) };
+        return {
+          value: String(x),
+          path: opt?.path,
+          ...(opt && opt.label !== String(x) ? { label: opt.label } : {}),
+          ...(opt?.colour ? { colour: opt.colour } : {}),
+        };
       }),
   };
 }
