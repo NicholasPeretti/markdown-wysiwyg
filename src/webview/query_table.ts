@@ -155,15 +155,55 @@ export function renderQueryPreview(
 
 /** Re-runs every rendered query; called when the host index changes. */
 export function refreshQueryTables(): void {
-  for (const id of blocks.keys()) run(id);
+  for (const id of liveBlocks()) run(id);
 }
 
 /** Re-runs the queries that read the current file's frontmatter via `$.field`. */
 export function refreshSelfQueries(): void {
-  for (const [id, state] of blocks) {
-    const { query } = parseQuery(state.text);
+  for (const id of liveBlocks()) {
+    const { query } = parseQuery(blocks.get(id)!.text);
     if (query.where.some(usesSelf)) run(id);
   }
+}
+
+/**
+ * Ids of the query blocks still in the document. Blocks are keyed by text, so
+ * typing in a block leaves an entry per intermediate text, all painting the
+ * same preview slot; those are dropped here so they cannot overwrite it.
+ */
+function liveBlocks(): string[] {
+  const live = documentBlockIds();
+  if (!live) return [...blocks.keys()];
+  for (const id of blocks.keys()) if (!live.has(id)) blocks.delete(id);
+  return [...blocks.keys()];
+}
+
+/** Ids of the query code blocks in the editor's document; undefined before it is ready. */
+function documentBlockIds(): Set<string> | undefined {
+  const ctx = host?.ctx();
+  if (!ctx) return undefined;
+  let view: EditorView;
+  try {
+    view = ctx.get(editorViewCtx);
+  } catch {
+    return undefined;
+  }
+  const ids = new Set<string>();
+  view.state.doc.descendants((node) => {
+    if (
+      node.type.name === "code_block" &&
+      String(node.attrs.language ?? "").toLowerCase() === "query"
+    ) {
+      ids.add(blockId(node.textContent));
+    }
+    return true;
+  });
+  return ids;
+}
+
+/** Whether a result for `id` may still paint: its text is in the document. */
+function isLive(id: string): boolean {
+  return documentBlockIds()?.has(id) ?? true;
 }
 
 export function handleQueryMessage(
@@ -175,7 +215,7 @@ export function handleQueryMessage(
       pending.delete(message.id as string);
       if (!blockIdFor) return true;
       const state = blocks.get(blockIdFor);
-      if (!state || state.superseded) return true;
+      if (!state || state.superseded || !isLive(blockIdFor)) return true;
       state.result = normalizeColumns({
         columns: message.columns as string[],
         readonly: message.readonly as boolean[] | undefined,
@@ -198,7 +238,7 @@ export function handleQueryMessage(
       pending.delete(message.id as string);
       if (!blockIdFor) return true;
       const state = blocks.get(blockIdFor);
-      if (!state || state.superseded) return true;
+      if (!state || state.superseded || !isLive(blockIdFor)) return true;
       state.error = String(message.message);
       state.result = undefined;
       state.apply(render(blockIdFor, state));
@@ -1520,8 +1560,10 @@ function onFilterKeydown(e: KeyboardEvent): void {
 }
 
 /** Reflects edit/result mode on the toggle (the block is re-rendered by Vue, so query the DOM). */
+// Editing styles key off Milkdown's own `.codemirror-host.hidden` rather than a
+// class of ours: Milkdown tears off-screen blocks down and rebuilds them in
+// preview mode, which would leave such a class behind.
 function syncEditToggle(block: HTMLElement | null, editing: boolean): void {
-  block?.classList.toggle("mdw-qt-editing", editing);
   block?.querySelectorAll<HTMLElement>(".mdw-qt-edit").forEach((b) => {
     b.setAttribute("aria-pressed", String(editing));
     b.title = editing ? "Show result" : "Edit query";

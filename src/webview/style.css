@@ -870,12 +870,12 @@ body {
   background: transparent;
 }
 
-.milkdown .milkdown-code-block.mdw-qt-editing:has(.mdw-qt) {
+.milkdown .milkdown-code-block:has(.codemirror-host:not(.hidden)):has(.mdw-qt) {
   padding: 8px 20px 20px;
   background: var(--crepe-color-surface);
 }
 
-.milkdown .milkdown-code-block.mdw-qt-editing .preview-panel {
+.milkdown .milkdown-code-block:has(.codemirror-host:not(.hidden)):has(.mdw-qt) .preview-panel {
   margin-top: 8px;
 }
 
@@ -918,18 +918,18 @@ body {
 
 /* While editing, the editor sits above the table: pin the actions to the top
    right of the code block instead so the toggle is next to the query. */
-.mdw-qt-editing .mdw-qt {
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt {
   position: static;
 }
 
-.mdw-qt-editing .mdw-qt-toolbar {
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-toolbar {
   position: absolute;
   top: 10px;
   right: 12px;
   height: auto;
 }
 
-.mdw-qt-editing .mdw-qt-toolbar .mdw-qt-actions {
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-toolbar .mdw-qt-actions {
   margin: 0;
 }
 
@@ -943,7 +943,7 @@ body {
 }
 
 .mdw-qt:hover .mdw-qt-actions > *,
-.mdw-qt-editing .mdw-qt-actions > *,
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-actions > *,
 .mdw-qt-actions:has(.mdw-qt-menu.open) > * {
   opacity: 1;
 }
@@ -955,8 +955,8 @@ body {
   padding: 3px 5px;
 }
 
-.mdw-qt-editing .mdw-qt-footer .mdw-qt-edit,
-.mdw-qt-editing .mdw-qt-toolbar .mdw-qt-edit {
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-footer .mdw-qt-edit,
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-toolbar .mdw-qt-edit {
   background: var(--vscode-button-secondaryBackground, var(--vscode-list-activeSelectionBackground));
   color: var(--vscode-button-secondaryForeground, var(--vscode-editor-foreground));
 }
@@ -1145,7 +1145,7 @@ body {
 }
 
 /* The filter is for results; hide it while the query source is shown. */
-.mdw-qt-editing .mdw-qt-filter {
+.milkdown-code-block:has(.codemirror-host:not(.hidden)) .mdw-qt-filter {
   display: none;
 }
 
